@@ -32,7 +32,7 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
          host = host,
          port = port,
       }
-      server:clients(function(client)
+      server:clients(numNodes - 1, function(client)
          client:send({ q = "address?" })
          local msg = client:recv()
          assert(msg.q == "address")

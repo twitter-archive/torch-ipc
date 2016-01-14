@@ -23,6 +23,8 @@ tree.allReduce(grads, function(a, b)
 end)
 ```
 
+See the [AllReduce example](examples/allreduce.lua) to try it out.
+
 Client-Server
 -------------
 

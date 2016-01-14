@@ -22,7 +22,7 @@ SET(src
    src/error.c
 )
 SET(luasrc
-   lua/Tree.lua
+   lua/Tree.lua,
 )
 
 ADD_TORCH_PACKAGE(parallel "${src}" "${luasrc}" "A set of primitives for parallel computation in Torch")
