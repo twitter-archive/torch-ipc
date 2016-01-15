@@ -159,9 +159,11 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
       -- Handle uneven endings
       if zero then
          -- Restore the last value if a zero function is supplied
-         value = lastValue
+         value = value or lastValue
+         local i = 0
          walkTable(value, function(valuei)
-            return zero(valuei)
+            i = i + 1
+            return zero(valuei, i)
          end)
       else
          -- Save the last value we saw (for uneven ending)

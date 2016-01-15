@@ -17,6 +17,14 @@ int parallel_getpid(lua_State *L) {
    return 1;
 }
 
+int parallel_getppid(lua_State *L) {
+   pid_t pid;
+
+   pid = getppid();
+   lua_pushinteger(L, pid);
+   return 1;
+}
+
 int parallel_gettid(lua_State *L) {
    pthread_t tid;
 
@@ -81,6 +89,7 @@ static const struct luaL_reg parallel_routines[] = {
    {"server", cliser_server},
    {"client", cliser_client},
    {"getpid", parallel_getpid},
+   {"getppid", parallel_getppid},
    {"gettid", parallel_gettid},
    {"fork", parallel_fork},
    {"waitpid", parallel_waitpid},
