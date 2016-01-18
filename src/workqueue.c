@@ -17,6 +17,7 @@ typedef struct queue_t {
    pthread_mutex_t mutex;
    pthread_cond_t read_avail_cond;
    pthread_cond_t write_avail_cond;
+   uint32_t num_items;
 } queue_t;
 
 typedef struct workqueue_t {
@@ -150,8 +151,9 @@ static int workqueue_queue_read(lua_State *L, queue_t *queue, int doNotBlock) {
 
    pthread_mutex_lock(&queue->mutex);
    while (1) {
-      if (ringbuffer_peek(queue->rb)) {
+      if (queue->num_items) {
          ret = rb_load(L, queue->rb);
+         queue->num_items--;
          pthread_cond_signal(&queue->write_avail_cond);
          pthread_mutex_unlock(&queue->mutex);
          if (ret < 0) return LUA_HANDLE_ERROR(L, ret);
@@ -199,6 +201,7 @@ static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
          break;
       }
    }
+   queue->num_items++;
    pthread_cond_signal(&queue->read_avail_cond);
    pthread_mutex_unlock(&queue->mutex);
    return ret;
@@ -219,17 +222,17 @@ int workqueue_write(lua_State *L) {
 }
 
 int workqueue_drain(lua_State *L) {
-   context_t *context;
-   workqueue_t *workqueue;
-
-   context = (context_t *)lua_touserdata(L, 1);
-   workqueue = context->workqueue;
+   context_t *context = (context_t *)lua_touserdata(L, 1);
+   workqueue_t *workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    if (workqueue->owner_thread != pthread_self()) return LUA_HANDLE_ERROR_STR(L, "workqueue drain is only available on the owner thread");
    pthread_mutex_lock(&workqueue->questions.mutex);
-   while (ringbuffer_peek(workqueue->questions.rb)) {
-      pthread_cond_wait(&workqueue->questions.write_avail_cond, &workqueue->questions.mutex);
-   }
+   pthread_mutex_lock(&workqueue->answers.mutex);
+   uint32_t mark = workqueue->answers.num_items + workqueue->questions.num_items;
    pthread_mutex_unlock(&workqueue->questions.mutex);
+   while (workqueue->answers.num_items < mark) {
+      pthread_cond_wait(&workqueue->answers.read_avail_cond, &workqueue->answers.mutex);
+   }
+   pthread_mutex_unlock(&workqueue->answers.mutex);
    return 0;
 }
