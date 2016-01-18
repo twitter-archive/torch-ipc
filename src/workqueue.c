@@ -6,9 +6,6 @@
 #include <pthread.h>
 #include "ringbuffer.h"
 #include "serialize.h"
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 #include "error.h"
 
 #define DEFAULT_WORKQUEUE_SIZE (256*1024)
@@ -27,22 +24,21 @@ typedef struct workqueue_t {
    struct workqueue_t *prev;
    uint32_t refcount;
    const char *name;
-   struct queue_t questions;
-   struct queue_t answers;
+   queue_t questions;
+   queue_t answers;
    pthread_t owner_thread;
    pthread_mutex_t mutex;
 } workqueue_t;
 
 typedef struct context_t {
-   struct workqueue_t *workqueue;
+   workqueue_t *workqueue;
 } context_t;
 
 static pthread_mutex_t workqueue_mutex;
-static struct workqueue_t *workqueue_head;
+static workqueue_t *workqueue_head;
 
 static void workqueue_one_time_init_inner() {
    pthread_mutexattr_t mutex_attr;
-
    pthread_mutexattr_init(&mutex_attr);
    pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
    pthread_mutex_init(&workqueue_mutex, &mutex_attr);
@@ -53,7 +49,7 @@ static void workqueue_one_time_init() {
    pthread_once(&workqueue_once, workqueue_one_time_init_inner);
 }
 
-static void workqueue_insert(struct workqueue_t *workqueue) {
+static void workqueue_insert(workqueue_t *workqueue) {
    if (workqueue_head) {
       workqueue_head->prev = workqueue;
       workqueue->next = workqueue_head;
@@ -61,7 +57,7 @@ static void workqueue_insert(struct workqueue_t *workqueue) {
    workqueue_head = workqueue;
 }
 
-static void workqueue_remove(struct workqueue_t *workqueue) {
+static void workqueue_remove(workqueue_t *workqueue) {
    if (workqueue_head == workqueue) {
       workqueue_head = workqueue->next;
    }
@@ -73,10 +69,8 @@ static void workqueue_remove(struct workqueue_t *workqueue) {
    }
 }
 
-static struct workqueue_t *workqueue_find(const char *name) {
-   struct workqueue_t *workqueue;
-
-   workqueue = workqueue_head;
+static workqueue_t *workqueue_find(const char *name) {
+   workqueue_t *workqueue = workqueue_head;
    while (workqueue && strcmp(workqueue->name, name) != 0) {
       workqueue = workqueue->next;
    }
@@ -86,9 +80,8 @@ static struct workqueue_t *workqueue_find(const char *name) {
    return workqueue;
 }
 
-static void workqueue_init_queue(struct queue_t *queue, size_t size) {
+static void workqueue_init_queue(queue_t *queue, size_t size) {
    pthread_mutexattr_t mutex_attr;
-
    pthread_mutexattr_init(&mutex_attr);
    pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
    pthread_mutex_init(&queue->mutex, &mutex_attr);
@@ -97,7 +90,7 @@ static void workqueue_init_queue(struct queue_t *queue, size_t size) {
    queue->rb = ringbuffer_create(size);
 }
 
-static void workqueue_destroy_queue(struct queue_t *queue) {
+static void workqueue_destroy_queue(queue_t *queue) {
    pthread_mutex_destroy(&queue->mutex);
    pthread_cond_destroy(&queue->read_avail_cond);
    pthread_cond_destroy(&queue->write_avail_cond);
@@ -105,17 +98,11 @@ static void workqueue_destroy_queue(struct queue_t *queue) {
 }
 
 int workqueue_open(lua_State *L) {
-   const char *name;
-   struct workqueue_t *workqueue;
-   size_t size;
-   struct context_t *context;
-   pthread_mutexattr_t mutex_attr;
-
    workqueue_one_time_init();
-   name = luaL_checkstring(L, 1);
-   size = luaL_optnumber(L, 2, DEFAULT_WORKQUEUE_SIZE);
+   const char *name = luaL_checkstring(L, 1);
+   size_t size = luaL_optnumber(L, 2, DEFAULT_WORKQUEUE_SIZE);
    pthread_mutex_lock(&workqueue_mutex);
-   workqueue = workqueue_find(name);
+   workqueue_t *workqueue = workqueue_find(name);
    if (!workqueue) {
       workqueue = (workqueue_t *)calloc(1, sizeof(workqueue_t));
       workqueue->refcount = 1;
@@ -123,19 +110,14 @@ int workqueue_open(lua_State *L) {
       workqueue_init_queue(&workqueue->questions, size);
       workqueue_init_queue(&workqueue->answers, size);
       workqueue->owner_thread = pthread_self();
+      pthread_mutexattr_t mutex_attr;
       pthread_mutexattr_init(&mutex_attr);
       pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
       pthread_mutex_init(&workqueue->mutex, &mutex_attr);
       workqueue_insert(workqueue);
-   } else {
-#ifdef _OPENMP
-      // not the prettiest spot for this gem...
-      // prevent BLAS from crashing on the reader threads
-      omp_set_num_threads(1);
-#endif
    }
    pthread_mutex_unlock(&workqueue_mutex);
-   context = (context_t *)lua_newuserdata(L, sizeof(context_t));
+   context_t *context = (context_t *)lua_newuserdata(L, sizeof(context_t));
    context->workqueue = workqueue;
    luaL_getmetatable(L, "parallel.workqueue");
    lua_setmetatable(L, -2);
@@ -143,8 +125,8 @@ int workqueue_open(lua_State *L) {
 }
 
 int workqueue_close(lua_State *L) {
-   struct context_t *context;
-   struct workqueue_t *workqueue;
+   context_t *context;
+   workqueue_t *workqueue;
 
    context = (context_t *)lua_touserdata(L, 1);
    workqueue = context->workqueue;
@@ -163,7 +145,7 @@ int workqueue_close(lua_State *L) {
    return 0;
 }
 
-static int workqueue_queue_read(lua_State *L, struct queue_t *queue, int doNotBlock) {
+static int workqueue_queue_read(lua_State *L, queue_t *queue, int doNotBlock) {
    int ret;
 
    pthread_mutex_lock(&queue->mutex);
@@ -185,9 +167,9 @@ static int workqueue_queue_read(lua_State *L, struct queue_t *queue, int doNotBl
 }
 
 int workqueue_read(lua_State *L) {
-   struct workqueue_t *workqueue;
+   workqueue_t *workqueue;
 
-   struct context_t *context;
+   context_t *context;
    context = (context_t *)lua_touserdata(L, 1);
    workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
@@ -199,7 +181,7 @@ int workqueue_read(lua_State *L) {
    }
 }
 
-static int workqueue_queue_write(lua_State *L, int index, struct queue_t *queue) {
+static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
    int ret;
 
    pthread_mutex_lock(&queue->mutex);
@@ -223,9 +205,9 @@ static int workqueue_queue_write(lua_State *L, int index, struct queue_t *queue)
 }
 
 int workqueue_write(lua_State *L) {
-   struct workqueue_t *workqueue;
+   workqueue_t *workqueue;
 
-   struct context_t *context;
+   context_t *context;
    context = (context_t *)lua_touserdata(L, 1);
    workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
@@ -237,8 +219,8 @@ int workqueue_write(lua_State *L) {
 }
 
 int workqueue_drain(lua_State *L) {
-   struct context_t *context;
-   struct workqueue_t *workqueue;
+   context_t *context;
+   workqueue_t *workqueue;
 
    context = (context_t *)lua_touserdata(L, 1);
    workqueue = context->workqueue;

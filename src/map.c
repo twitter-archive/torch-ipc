@@ -6,6 +6,9 @@
 #include <pthread.h>
 #include <lualib.h>
 #include "error.h"
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #define MAX_ARG_SIZE (16*1024)
 
@@ -75,6 +78,11 @@ static void* thread_func(void *arg) {
    lua_State *L;
    int i, k, top;
 
+#ifdef _OPENMP
+   // prevent MKL/BLAS from crashing on the reader threads
+   // its use of open-mp eats up way too many threads
+   omp_set_num_threads(1);
+#endif
    map_thread = (struct map_thread_t *)arg;
    L = luaL_newstate();
    luaL_openlibs(L);

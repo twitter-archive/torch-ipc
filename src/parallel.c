@@ -1,54 +1,43 @@
-#include "luaT.h"
-#include "workqueue.h"
-#include "cliser.h"
-#include "map.h"
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <errno.h>
+#include "luaT.h"
+#include "workqueue.h"
+#include "cliser.h"
+#include "map.h"
 #include "error.h"
 
 int parallel_getpid(lua_State *L) {
-   pid_t pid;
-
-   pid = getpid();
+   pid_t pid = getpid();
    lua_pushinteger(L, pid);
    return 1;
 }
 
 int parallel_getppid(lua_State *L) {
-   pid_t pid;
-
-   pid = getppid();
+   pid_t pid = getppid();
    lua_pushinteger(L, pid);
    return 1;
 }
 
 int parallel_gettid(lua_State *L) {
-   pthread_t tid;
-
-   tid = pthread_self();
+   pthread_t tid = pthread_self();
    lua_pushinteger(L, (intptr_t)tid);
    return 1;
 }
 
 int parallel_fork(lua_State *L) {
-   pid_t pid;
-
-   pid = fork();
+   pid_t pid = fork();
    lua_pushinteger(L, pid);
    return 1;
 }
 
 int parallel_waitpid(lua_State *L) {
-   pid_t pid;
    int status;
-   int ret;
-
-   pid = lua_tointeger(L, 1);
+   pid_t pid = lua_tointeger(L, 1);
    do {
-      ret = waitpid(pid, &status, WUNTRACED | WCONTINUED);
+      int ret = waitpid(pid, &status, WUNTRACED | WCONTINUED);
       if (ret < 0) {
          return LUA_HANDLE_ERROR(L, errno);
       }
@@ -61,25 +50,17 @@ int parallel_waitpid(lua_State *L) {
 }
 
 int parallel_link(lua_State *L) {
-   const char *src;
-   const char *dst;
-   int ret;
-
-   src = lua_tostring(L, 1);
-   dst = lua_tostring(L, 2);
-   ret = link(src, dst);
+   const char *src = lua_tostring(L, 1);
+   const char *dst = lua_tostring(L, 2);
+   int ret = link(src, dst);
    lua_pushinteger(L, ret < 0 ? errno : ret);
    return 1;
 }
 
 int parallel_symlink(lua_State *L) {
-   const char *src;
-   const char *dst;
-   int ret;
-
-   src = lua_tostring(L, 1);
-   dst = lua_tostring(L, 2);
-   ret = symlink(src, dst);
+   const char *src = lua_tostring(L, 1);
+   const char *dst = lua_tostring(L, 2);
+   int ret = symlink(src, dst);
    lua_pushinteger(L, ret < 0 ? errno : ret);
    return 1;
 }
