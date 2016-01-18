@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <errno.h>
+#include <signal.h>
 #include "luaT.h"
 #include "workqueue.h"
 #include "cliser.h"
@@ -125,6 +126,7 @@ static const struct luaL_reg map_routines[] = {
 };
 
 DLL_EXPORT int luaopen_libparallel(lua_State *L) {
+   signal(SIGPIPE, SIG_IGN);  // don't die for SIGPIPE
    luaL_newmetatable(L, "parallel.workqueue");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);

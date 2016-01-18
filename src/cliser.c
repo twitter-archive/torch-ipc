@@ -195,16 +195,18 @@ static void* listen_thread(void *arg) {
    struct client_t *client;
    int sock;
    int value;
+   int listen_sock;
 
    server = (struct server_t *)arg;
-   ret = listen(server->sock, 1024);
+   listen_sock = server->sock;
+   ret = listen(listen_sock, 1024);
    if (ret) {
-      HANDLE_ERROR(errno);
+      //HANDLE_ERROR(errno); // this is noisy and only traps a quick shutdown
       pthread_exit(0);
    }
    while (1) {
       addrlen = sizeof(addr);
-      ret = accept(server->sock, &addr, &addrlen);
+      ret = accept(listen_sock, &addr, &addrlen);
       if (ret > 0) {
          sock = ret;
          value = 1;
