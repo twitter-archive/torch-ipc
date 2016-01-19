@@ -4,7 +4,6 @@
 #endif
 #include "luaT.h"
 #include <errno.h>
-#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -70,11 +69,8 @@ typedef struct client_t {
 
 typedef struct server_t {
    int sock;
-   pthread_t listen_thread;
    client_t *clients;
    uint32_t num_clients;
-   pthread_mutex_t clients_mutex;
-   pthread_cond_t clients_cond;
    uint32_t timeout_seconds;
    copy_context_t copy_context;
    uint32_t ip_address;
@@ -86,19 +82,15 @@ typedef struct server_client_t {
 } server_client_t;
 
 static void insert_client(server_t *server, client_t *client) {
-   pthread_mutex_lock(&server->clients_mutex);
    if (server->clients) {
       server->clients->prev = client;
       client->next = server->clients;
    }
    server->clients = client;
    server->num_clients++;
-   pthread_cond_signal(&server->clients_cond);
-   pthread_mutex_unlock(&server->clients_mutex);
 }
 
 static void remove_client(server_t *server, client_t *client) {
-   pthread_mutex_lock(&server->clients_mutex);
    if (server->clients == client) {
       server->clients = client->next;
    }
@@ -109,7 +101,6 @@ static void remove_client(server_t *server, client_t *client) {
       client->prev->next = client->next;
    }
    server->num_clients--;
-   pthread_mutex_unlock(&server->clients_mutex);
 }
 
 static void destroy_copy_context(copy_context_t *copy_context) {
@@ -128,13 +119,10 @@ static void destroy_copy_context(copy_context_t *copy_context) {
 #endif
 }
 
-static void destroy_client(client_t *client) {
+static int destroy_client(lua_State *L, client_t *client) {
    if (client->sock) {
-      // don't know how to do this nicely...
-      //ret = shutdown(client->sock, SHUT_RDWR);
-      //if (ret) HANDLE_ERROR(errno);
       int ret = close(client->sock);
-      if (ret) HANDLE_ERROR(errno);
+      if (ret) return LUA_HANDLE_ERROR(L, errno);
       client->sock = 0;
    }
    if (client->send_rb) {
@@ -151,69 +139,24 @@ static void destroy_client(client_t *client) {
       client->tag = NULL;
    }
    free(client);
+   return 0;
 }
 
-static void destroy_server(server_t *server) {
+static int destroy_server(lua_State *L, server_t *server) {
    if (server->sock) {
-      // on linux we need this to wake up the listen thread
-      int ret = shutdown(server->sock, SHUT_RDWR);
-      // but on osx it causes an error, so we ignore
-      //if (ret) HANDLE_ERROR(errno);
-      ret = close(server->sock);
-      if (ret) HANDLE_ERROR(errno);
+      int ret = close(server->sock);
+      if (ret) return LUA_HANDLE_ERROR(L, errno);
       server->sock = 0;
-   }
-   if (server->listen_thread) {
-      int ret = pthread_join(server->listen_thread, NULL);
-      if (ret) HANDLE_ERROR(ret);
-      server->listen_thread = 0;
    }
    client_t *client = server->clients;
    while (client) {
       client_t *next = client->next;
-      destroy_client(client);
+      destroy_client(L, client);
       client = next;
    }
    server->clients = NULL;
    server->num_clients = 0;
-   int ret = pthread_mutex_destroy(&server->clients_mutex);
-   if (ret) HANDLE_ERROR(ret);
-   ret = pthread_cond_destroy(&server->clients_cond);
-   if (ret) HANDLE_ERROR(ret);
    destroy_copy_context(&server->copy_context);
-}
-
-static void* listen_thread(void *arg) {
-   server_t *server = (server_t *)arg;
-   int listen_sock = server->sock;
-   int ret = listen(listen_sock, 1024);
-   if (ret) {
-      //HANDLE_ERROR(errno); // this is noisy and only traps a quick shutdown
-      pthread_exit(0);
-   }
-   while (1) {
-      struct sockaddr addr;
-      socklen_t addrlen = sizeof(addr);
-      ret = accept(listen_sock, &addr, &addrlen);
-      if (ret > 0) {
-         int sock = ret;
-         int value = 1;
-         ret = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value));
-         if (ret) HANDLE_ERROR(errno);
-         client_t *client = (client_t *)calloc(1, sizeof(client_t));
-         client->sock = sock;
-         client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
-         client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
-#ifndef __APPLE__
-         if (server->ip_address == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
-            client->copy_context.use_fastpath = 1;
-         }
-#endif
-         insert_client(server, client);
-      } else {
-         pthread_exit(0);
-      }
-   }
    return 0;
 }
 
@@ -257,42 +200,24 @@ int cliser_server(lua_State *L) {
       close(sock);
       return LUA_HANDLE_ERROR(L, errno);
    }
+   ret = listen(sock, 1024);
+   if (ret) {
+      close(sock);
+      return LUA_HANDLE_ERROR(L, errno);
+   }
    struct sockaddr_in sin;
    addrlen = sizeof(struct sockaddr_in);
    ret = getsockname(sock, (struct sockaddr *)&sin, &addrlen);
-   if (ret) return LUA_HANDLE_ERROR(L, errno);
+   if (ret) {
+      close(sock);
+      return LUA_HANDLE_ERROR(L, errno);
+   }
    port = ntohs(sin.sin_port);
    server_t *server = (server_t *)lua_newuserdata(L, sizeof(server_t));
    memset(server, 0, sizeof(server_t));
    server->sock = sock;
    server->ip_address = sin.sin_addr.s_addr;
    server->timeout_seconds = DEFAULT_TIMEOUT_SECONDS;
-   pthread_mutexattr_t mutex_attr;
-   ret = pthread_mutexattr_init(&mutex_attr);
-   if (ret) {
-      destroy_server(server);
-      return LUA_HANDLE_ERROR(L, ret);
-   }
-   ret = pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
-   if (ret) {
-      destroy_server(server);
-      return LUA_HANDLE_ERROR(L, ret);
-   }
-   ret = pthread_mutex_init(&server->clients_mutex, &mutex_attr);
-   if (ret) {
-      destroy_server(server);
-      return LUA_HANDLE_ERROR(L, ret);
-   }
-   ret = pthread_cond_init(&server->clients_cond, NULL);
-   if (ret) {
-      destroy_server(server);
-      return LUA_HANDLE_ERROR(L, ret);
-   }
-   ret = pthread_create(&server->listen_thread, NULL, listen_thread, server);
-   if (ret) {
-      destroy_server(server);
-      return LUA_HANDLE_ERROR(L, ret);
-   }
    luaL_getmetatable(L, "parallel.server");
    lua_setmetatable(L, -2);
    lua_pushinteger(L, port);
@@ -365,8 +290,7 @@ int cliser_client(lua_State *L) {
 
 int cliser_server_close(lua_State *L) {
    server_t *server = (server_t *)lua_touserdata(L, 1);
-   destroy_server(server);
-   return 0;
+   return destroy_server(L, server);
 }
 
 int cliser_client_close(lua_State *L) {
@@ -374,7 +298,7 @@ int cliser_client_close(lua_State *L) {
    if (*client) {
       (*client)->ref_count--;
       if ((*client)->ref_count == 0) {
-         destroy_client(*client);
+         destroy_client(L, *client);
       }
       (*client) = NULL;
    }
@@ -423,18 +347,25 @@ int cliser_server_clients(lua_State *L) {
       tag = NULL;
       invert_order = 0;
    }
-   struct timeval tv;
-   gettimeofday(&tv, NULL);
-   struct timespec ts;
-   ts.tv_sec = tv.tv_sec + server->timeout_seconds;
-   ts.tv_nsec = 0;
-   pthread_mutex_lock(&server->clients_mutex);
    while (wait > server->num_clients) {
-      int ret = pthread_cond_timedwait(&server->clients_cond, &server->clients_mutex, &ts);
-      if (ret) {
-         pthread_mutex_unlock(&server->clients_mutex);
-         return LUA_HANDLE_ERROR(L, ret);
+      struct sockaddr addr;
+      socklen_t addrlen = sizeof(addr);
+      int ret = accept(server->sock, &addr, &addrlen);
+      if (ret <= 0) return LUA_HANDLE_ERROR(L, errno);
+      int sock = ret;
+      int value = 1;
+      ret = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value));
+      if (ret) HANDLE_ERROR(errno);
+      client_t *client = (client_t *)calloc(1, sizeof(client_t));
+      client->sock = sock;
+      client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
+      client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
+#ifndef __APPLE__
+      if (server->ip_address == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
+         client->copy_context.use_fastpath = 1;
       }
+#endif
+      insert_client(server, client);
    }
    client_t **clients = alloca(server->num_clients * sizeof(client_t*));
    client_t *client = server->clients;
@@ -446,7 +377,6 @@ int cliser_server_clients(lua_State *L) {
       }
       client = client->next;
    }
-   pthread_mutex_unlock(&server->clients_mutex);
    if (invert_order) {
       qsort(clients, i, sizeof(client_t*), compare_clients_inverted);
    } else {
@@ -500,7 +430,7 @@ int cliser_server_client_close(lua_State *L) {
    server_client_t *server_client = (server_client_t *)lua_touserdata(L, 1);
    if (server_client->client == NULL) return LUA_HANDLE_ERROR_STR(L, "server client is invalid, either closed or used outside of server function scope");
    remove_client(server_client->server, server_client->client);
-   destroy_client(server_client->client);
+   destroy_client(L, server_client->client);
    server_client->server = NULL;
    server_client->client = NULL;
    return 0;
@@ -666,7 +596,6 @@ int cliser_server_broadcast(lua_State *L) {
    double t0 = _parallel_seconds();
    server_t *server = (server_t *)lua_touserdata(L, 1);
    const char *tag = luaL_optstring(L, 3, NULL);
-   pthread_mutex_lock(&server->clients_mutex);
    client_t **clients = alloca(server->num_clients * sizeof(client_t*));
    client_t *client = server->clients;
    int i = 0;
@@ -677,7 +606,6 @@ int cliser_server_broadcast(lua_State *L) {
       }
       client = client->next;
    }
-   pthread_mutex_unlock(&server->clients_mutex);
    qsort(clients, i, sizeof(client_t*), compare_clients);
    int ret = 0;
    for (int j = 0; j < i; j++) {
@@ -700,7 +628,6 @@ int cliser_server_recv_any(lua_State *L) {
    const char *tag = luaL_optstring(L, 2, NULL);
    fd_set fds;
    FD_ZERO(&fds);
-   pthread_mutex_lock(&server->clients_mutex);
    int highest = -1;
    client_t *client = server->clients;
    while (client) {
@@ -713,10 +640,7 @@ int cliser_server_recv_any(lua_State *L) {
       client = client->next;
    }
    int ret = select(highest + 1, &fds, NULL, NULL, NULL);
-   if (ret < 0) {
-      pthread_mutex_unlock(&server->clients_mutex);
-      return LUA_HANDLE_ERROR(L, errno);
-   }
+   if (ret < 0) return LUA_HANDLE_ERROR(L, errno);
    client = server->clients;
    while (client) {
       if (!tag || (client->tag && strcmp(tag, client->tag) == 0)) {
@@ -735,7 +659,6 @@ int cliser_server_recv_any(lua_State *L) {
       }
       client = client->next;
    }
-   pthread_mutex_unlock(&server->clients_mutex);
    server->copy_context.rx.total_seconds += (_parallel_seconds() - t0);
    server->copy_context.rx.num_calls++;
    return ret;
