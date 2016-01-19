@@ -123,6 +123,8 @@ static void destroy_copy_context(copy_context_t *copy_context) {
       copy_context->buf[0] = NULL;
       copy_context->buf[1] = NULL;
    }
+#else
+   (void)copy_context;
 #endif
 }
 
@@ -346,7 +348,7 @@ int cliser_client(lua_State *L) {
    client_t *client = (client_t *)calloc(1, sizeof(client_t));
    client->sock = sock;
 #ifndef __APPLE__
-   if (((sockaddr_in *)&bind_addr)->sin_addr.s_addr == ((sockaddr_in *)&addr)->sin_addr.s_addr) {
+   if (((struct sockaddr_in *)&bind_addr)->sin_addr.s_addr == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
       client->copy_context.use_fastpath = 1;
    }
 #endif
