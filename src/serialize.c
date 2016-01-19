@@ -14,19 +14,16 @@
 #define CHUNK_SIZE (8192)
 
 typedef struct chunked_t {
-   struct ringbuffer_t *rb;
+   ringbuffer_t *rb;
    uint8_t buf[CHUNK_SIZE];
    uint8_t read_last;
 } chunked_t;
 
 static int rb_lua_writer(lua_State *L, const void* in, size_t cb, void* param) {
-   struct ringbuffer_t *rb;
-   size_t ccb;
    (void)L;
-
-   rb = (struct ringbuffer_t *)param;
+   ringbuffer_t *rb = (ringbuffer_t *)param;
    while (cb > 0) {
-      ccb = MIN(CHUNK_SIZE, cb);
+      size_t ccb = MIN(CHUNK_SIZE, cb);
       RB_WRITE(L, rb, &ccb, sizeof(size_t));
       RB_WRITE(L, rb, in, ccb);
       in = (((const uint8_t *)in) + ccb);
@@ -36,10 +33,8 @@ static int rb_lua_writer(lua_State *L, const void* in, size_t cb, void* param) {
 }
 
 static const char *rb_lua_reader(lua_State *L, void *param, size_t *size) {
-   struct chunked_t *chunked;
-
    (void)L;
-   chunked = (struct chunked_t *)param;
+   chunked_t *chunked = (chunked_t *)param;
    if (ringbuffer_read(chunked->rb, size, sizeof(size_t)) != sizeof(size_t)) {
       *size = 0;
       return NULL;
@@ -55,41 +50,39 @@ static const char *rb_lua_reader(lua_State *L, void *param, size_t *size) {
    return NULL;
 }
 
-int rb_save(lua_State *L, int index, struct ringbuffer_t *rb, int oop) {
-   char type;
-   lua_Number n;
-   const char *str;
-   size_t str_len;
-   int ret, top;
-   void *ptr;
-
-   type = lua_type(L, index);
+int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop) {
+   char type = lua_type(L, index);
    switch (type) {
-      case LUA_TNIL:
+      case LUA_TNIL: {
          RB_WRITE(L, rb, &type, sizeof(char));
          return 0;
-      case LUA_TBOOLEAN:
+      }
+      case LUA_TBOOLEAN: {
          RB_WRITE(L, rb, &type, sizeof(char));
          type = lua_toboolean(L, index);
          RB_WRITE(L, rb, &type, sizeof(char));
          return 0;
-      case LUA_TNUMBER:
+      }
+      case LUA_TNUMBER: {
          RB_WRITE(L, rb, &type, sizeof(char));
-         n = lua_tonumber(L, index);
+         lua_Number n = lua_tonumber(L, index);
          RB_WRITE(L, rb, &n, sizeof(n));
          return 0;
-      case LUA_TSTRING:
+      }
+      case LUA_TSTRING: {
          RB_WRITE(L, rb, &type, sizeof(char));
-         str = lua_tolstring(L, index, &str_len);
+         size_t str_len;
+         const char *str = lua_tolstring(L, index, &str_len);
          RB_WRITE(L, rb, &str_len, sizeof(str_len));
          RB_WRITE(L, rb, str, str_len);
          return 0;
-      case LUA_TTABLE:
+      }
+      case LUA_TTABLE: {
          RB_WRITE(L, rb, &type, sizeof(char));
-         top = lua_gettop(L);
+         int top = lua_gettop(L);
          lua_pushnil(L);
          while (lua_next(L, index) != 0) {
-            ret = rb_save(L, top + 1, rb, oop);
+            int ret = rb_save(L, top + 1, rb, oop);
             if (ret) {
                lua_pop(L, 2);
                return ret;
@@ -104,26 +97,27 @@ int rb_save(lua_State *L, int index, struct ringbuffer_t *rb, int oop) {
          type = LUA_TNIL;
          RB_WRITE(L, rb, &type, sizeof(char));
          return 0;
-      case LUA_TFUNCTION:
+      }
+      case LUA_TFUNCTION: {
          RB_WRITE(L, rb, &type, sizeof(char));
          if (index != lua_gettop(L)) {
             lua_pushvalue(L, index);
          }
-         ret = lua_dump(L, rb_lua_writer, rb);
+         // this returns different things under LuaJIT vs Lua
+         lua_dump(L, rb_lua_writer, rb);
          if (index != lua_gettop(L)) {
             lua_pop(L, 1);
          }
-         // this returns different things under LuaJIT vs Lua
-         //if (ret) return -EINVAL;
-         str_len = 0;
+         size_t str_len = 0;
          RB_WRITE(L, rb, &str_len, sizeof(size_t));
          return 0;
-      case LUA_TUSERDATA:
+      }
+      case LUA_TUSERDATA: {
          if (oop) return -EPERM;
-         str = luaT_typename(L, index);
+         const char *str = luaT_typename(L, index);
          if (!str) {
             if (luaL_callmeta(L, index, "metatablename")) {
-               str = lua_tolstring(L, lua_gettop(L), &str_len);
+               str = lua_tostring(L, lua_gettop(L));
                lua_pop(L, 1);
                type = -type;
             } else {
@@ -131,10 +125,10 @@ int rb_save(lua_State *L, int index, struct ringbuffer_t *rb, int oop) {
             }
          }
          RB_WRITE(L, rb, &type, sizeof(char));
-         str_len = strlen(str);
+         size_t str_len = strlen(str);
          RB_WRITE(L, rb, &str_len, sizeof(str_len));
          RB_WRITE(L, rb, str, str_len);
-         ptr = lua_touserdata(L, index);
+         void *ptr = lua_touserdata(L, index);
          RB_WRITE(L, rb, ptr, sizeof(void *));
          if (luaL_callmeta(L, index, "retain")) {
             lua_pop(L, 1);
@@ -142,18 +136,19 @@ int rb_save(lua_State *L, int index, struct ringbuffer_t *rb, int oop) {
             return -EINVAL;
          }
          return 0;
+      }
       default:
          return -EPERM;
    }
 }
 
-static int rb_load_rcsv(lua_State *L, struct ringbuffer_t *rb, int is_key) {
+static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
    char type;
    lua_Number n;
    char *str;
    size_t str_len;
    int ret;
-   struct chunked_t chunked;
+   chunked_t chunked;
    void *ptr, **pptr;
 
    if (!lua_checkstack(L, 1)) return -ENOMEM;
@@ -217,6 +212,6 @@ static int rb_load_rcsv(lua_State *L, struct ringbuffer_t *rb, int is_key) {
    }
 }
 
-int rb_load(lua_State *L, struct ringbuffer_t *rb) {
+int rb_load(lua_State *L, ringbuffer_t *rb) {
    return rb_load_rcsv(L, rb, 0);
 }

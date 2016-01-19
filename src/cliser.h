@@ -1,3 +1,6 @@
+#ifndef _CLISER_H_
+#define _CLISER_H_
+
 #include "luaT.h"
 
 int cliser_server(lua_State *L);
@@ -32,7 +35,4 @@ void Lcliser_DoubleInit(lua_State *L);
 void Lcliser_CudaInit(lua_State *L);
 #endif
 
-struct copy_context_t;
-
-int sock_send_raw(lua_State *L, int sock, void *ptr, size_t len, struct copy_context_t *copy_context);
-int sock_recv_raw(lua_State *L, int sock, void *ptr, size_t len, struct copy_context_t *copy_context);
+#endif

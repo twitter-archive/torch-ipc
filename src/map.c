@@ -14,12 +14,12 @@
 
 typedef struct map_thread_t {
    pthread_t thread;
-   struct ringbuffer_t *rb;
+   ringbuffer_t *rb;
    int ret;
 } map_thread_t;
 
 typedef struct map_t {
-   struct map_thread_t *threads;
+   map_thread_t *threads;
    uint32_t num_threads;
 } map_t;
 
@@ -46,17 +46,15 @@ static void _safe_require_one_time_init() {
 }
 
 static int _safe_require(lua_State *L) {
-   int n, i;
-
    pthread_mutex_lock(&_safe_require_mutex);
-   n = lua_gettop(L);
+   int n = lua_gettop(L);
    lua_getglobal(L, "_old_require");
-   for (i = 1; i <= n; i++) {
+   for (int i = 1; i <= n; i++) {
       lua_pushvalue(L, i);
    }
-   i = lua_pcall(L, n, LUA_MULTRET, 0);
+   int ret = lua_pcall(L, n, LUA_MULTRET, 0);
    pthread_mutex_unlock(&_safe_require_mutex);
-   if (i) {
+   if (ret) {
       return luaL_error(L, lua_tostring(L, 1));
    } else {
       return lua_gettop(L) - n;
@@ -74,17 +72,13 @@ typedef int (*ThreadInitFunc) (lua_State *L);
 ThreadInitFunc _parallel_static_init_thread = NULL;
 
 static void* thread_func(void *arg) {
-   struct map_thread_t *map_thread;
-   lua_State *L;
-   int i, k, top;
-
 #ifdef _OPENMP
    // prevent MKL/BLAS from crashing on the reader threads
    // its use of open-mp eats up way too many threads
    omp_set_num_threads(1);
 #endif
-   map_thread = (struct map_thread_t *)arg;
-   L = luaL_newstate();
+   map_thread_t *map_thread = (map_thread_t *)arg;
+   lua_State *L = luaL_newstate();
    luaL_openlibs(L);
 #ifdef STATIC_TH
    if (_parallel_static_init_thread) {
@@ -104,15 +98,15 @@ static void* thread_func(void *arg) {
       return NULL;
    }
 #endif
-   top = lua_gettop(L);
-   i = 0;
+   int top = lua_gettop(L);
+   int i = 0;
    while (ringbuffer_peek(map_thread->rb)) {
       rb_load(L, map_thread->rb);
       i++;
    }
    map_thread->ret = lua_pcall(L, i - 1, LUA_MULTRET, 0);
-   k = lua_gettop(L) - top;
-   for (i = 1; i <= k; i++) {
+   int k = lua_gettop(L) - top;
+   for (int i = 1; i <= k; i++) {
       rb_save(L, top + i, map_thread->rb, 0);
    }
    lua_close(L);
@@ -120,22 +114,16 @@ static void* thread_func(void *arg) {
 }
 
 int map_open(lua_State *L) {
-   uint32_t i, num_threads;
-   struct map_thread_t *threads;
-   struct map_t *map;
-   int j, k;
-
 #ifdef __APPLE__
    _safe_require_one_time_init();
 #endif
-
-   num_threads = lua_tonumber(L, 1);
+   uint32_t num_threads = lua_tonumber(L, 1);
    if (lua_type(L, 2) != LUA_TFUNCTION) return LUA_HANDLE_ERROR_STR(L, "map arg #2 expected a function");
-   threads = (struct map_thread_t *)calloc(num_threads, sizeof(struct map_thread_t));
-   k = lua_gettop(L);
-   for (i = 0; i < num_threads; i++) {
+   map_thread_t *threads = (map_thread_t *)calloc(num_threads, sizeof(map_thread_t));
+   int k = lua_gettop(L);
+   for (uint32_t i = 0; i < num_threads; i++) {
       threads[i].rb = ringbuffer_create(MAX_ARG_SIZE);
-      for (j = 2; j <= k; j++) {
+      for (int j = 2; j <= k; j++) {
          rb_save(L, j, threads[i].rb, 0);
       }
       lua_pushinteger(L, i + 1);
@@ -143,7 +131,7 @@ int map_open(lua_State *L) {
       lua_pop(L, 1);
       pthread_create(&threads[i].thread, NULL, thread_func, threads + i);
    }
-   map = (struct map_t *)lua_newuserdata(L, sizeof(map_t));
+   map_t *map = (map_t *)lua_newuserdata(L, sizeof(map_t));
    map->num_threads = num_threads;
    map->threads = threads;
    luaL_getmetatable(L, "parallel.map");
@@ -152,15 +140,10 @@ int map_open(lua_State *L) {
 }
 
 int map_join(lua_State *L) {
-   struct map_t *map;
-   uint32_t i;
-   int rc;
-   int err_rc;
-
-   rc = 0;
-   err_rc = -1;
-   map = (struct map_t *)lua_touserdata(L, 1);
-   for (i = 0; i < map->num_threads; i++) {
+   int rc = 0;
+   int err_rc = -1;
+   map_t *map = (map_t *)lua_touserdata(L, 1);
+   for (uint32_t i = 0; i < map->num_threads; i++) {
       if (map->threads[i].rb) {
          pthread_join(map->threads[i].thread, NULL);
          if (map->threads[i].ret) {
@@ -183,11 +166,8 @@ int map_join(lua_State *L) {
 }
 
 int map_check_errors(lua_State *L) {
-   struct map_t *map;
-   uint32_t i;
-
-   map = (struct map_t *)lua_touserdata(L, 1);
-   for (i = 0; i < map->num_threads; i++) {
+   map_t *map = (map_t *)lua_touserdata(L, 1);
+   for (uint32_t i = 0; i < map->num_threads; i++) {
       if (map->threads[i].ret) {
          pthread_join(map->threads[i].thread, NULL);
          while (ringbuffer_peek(map->threads[i].rb)) {

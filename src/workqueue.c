@@ -126,11 +126,8 @@ int workqueue_open(lua_State *L) {
 }
 
 int workqueue_close(lua_State *L) {
-   context_t *context;
-   workqueue_t *workqueue;
-
-   context = (context_t *)lua_touserdata(L, 1);
-   workqueue = context->workqueue;
+   context_t *context = (context_t *)lua_touserdata(L, 1);
+   workqueue_t *workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue has already been closed");
    pthread_mutex_lock(&workqueue_mutex);
    workqueue->refcount--;
@@ -147,12 +144,10 @@ int workqueue_close(lua_State *L) {
 }
 
 static int workqueue_queue_read(lua_State *L, queue_t *queue, int doNotBlock) {
-   int ret;
-
    pthread_mutex_lock(&queue->mutex);
    while (1) {
       if (queue->num_items) {
-         ret = rb_load(L, queue->rb);
+         int ret = rb_load(L, queue->rb);
          queue->num_items--;
          pthread_cond_signal(&queue->write_avail_cond);
          pthread_mutex_unlock(&queue->mutex);
@@ -169,11 +164,8 @@ static int workqueue_queue_read(lua_State *L, queue_t *queue, int doNotBlock) {
 }
 
 int workqueue_read(lua_State *L) {
-   workqueue_t *workqueue;
-
-   context_t *context;
-   context = (context_t *)lua_touserdata(L, 1);
-   workqueue = context->workqueue;
+   context_t *context = (context_t *)lua_touserdata(L, 1);
+   workqueue_t *workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    int doNotBlock = luaT_optboolean(L, 2, 0);
    if (workqueue->owner_thread == pthread_self()) {
@@ -184,9 +176,8 @@ int workqueue_read(lua_State *L) {
 }
 
 static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
-   int ret;
-
    pthread_mutex_lock(&queue->mutex);
+   int ret = 0;
    while (1) {
       ringbuffer_push_write_pos(queue->rb);
       ret = rb_save(L, index, queue->rb, 0);
@@ -208,11 +199,8 @@ static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
 }
 
 int workqueue_write(lua_State *L) {
-   workqueue_t *workqueue;
-
-   context_t *context;
-   context = (context_t *)lua_touserdata(L, 1);
-   workqueue = context->workqueue;
+   context_t *context = (context_t *)lua_touserdata(L, 1);
+   workqueue_t *workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    if (workqueue->owner_thread == pthread_self()) {
       return workqueue_queue_write(L, 2, &workqueue->questions);
