@@ -60,7 +60,6 @@ typedef struct client_t {
    struct client_t *prev;
    ringbuffer_t *send_rb;
    ringbuffer_t *recv_rb;
-   uint32_t timeout_seconds;
    copy_context_t copy_context;
    char *tag;
    int id;
@@ -71,7 +70,6 @@ typedef struct server_t {
    int sock;
    client_t *clients;
    uint32_t num_clients;
-   uint32_t timeout_seconds;
    copy_context_t copy_context;
    uint32_t ip_address;
 } server_t;
@@ -217,7 +215,6 @@ int cliser_server(lua_State *L) {
    memset(server, 0, sizeof(server_t));
    server->sock = sock;
    server->ip_address = sin.sin_addr.s_addr;
-   server->timeout_seconds = DEFAULT_TIMEOUT_SECONDS;
    luaL_getmetatable(L, "parallel.server");
    lua_setmetatable(L, -2);
    lua_pushinteger(L, port);
@@ -279,7 +276,6 @@ int cliser_client(lua_State *L) {
 #endif
    client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
    client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
-   client->timeout_seconds = DEFAULT_TIMEOUT_SECONDS;
    client->ref_count = 1;
    client_t **clientp = (client_t **)lua_newuserdata(L, sizeof(client_t *));
    *clientp = client;
