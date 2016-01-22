@@ -1,13 +1,13 @@
 local test = require 'regress'
-local parallel = require 'libparallel'
-local Tree = require 'parallel.Tree'
+local ipc = require 'libipc'
+local Tree = require 'ipc.Tree'
 
 local function testAllReduce(njobs, base, makeValue, reduce)
-   local server, port = parallel.server('127.0.0.1')
-   local m = parallel.map(njobs - 1, function(njobs, base, port, makeValue, reduce, mapid)
-      local parallel = require 'libparallel'
-      local Tree = require 'parallel.Tree'
-      local client = parallel.client('127.0.0.1', port)
+   local server, port = ipc.server('127.0.0.1')
+   local m = ipc.map(njobs - 1, function(njobs, base, port, makeValue, reduce, mapid)
+      local ipc = require 'libipc'
+      local Tree = require 'ipc.Tree'
+      local client = ipc.client('127.0.0.1', port)
       local jobid = mapid + 1
       local tree = Tree(jobid, njobs, base, nil, client, '127.0.0.1')
       local value = makeValue(jobid)
@@ -106,11 +106,11 @@ test {
       end
       local njobs = 4
       local base = 2
-      local server, port = parallel.server('127.0.0.1')
-      local m = parallel.map(njobs - 1, function(njobs, base, port, reduce, zero, loop, mapid)
-         local parallel = require 'libparallel'
-         local Tree = require 'parallel.Tree'
-         local client = parallel.client('127.0.0.1', port)
+      local server, port = ipc.server('127.0.0.1')
+      local m = ipc.map(njobs - 1, function(njobs, base, port, reduce, zero, loop, mapid)
+         local ipc = require 'libipc'
+         local Tree = require 'ipc.Tree'
+         local client = ipc.client('127.0.0.1', port)
          local jobid = mapid + 1
          local tree = Tree(jobid, njobs, base, nil, client, '127.0.0.1')
          return loop(njobs, jobid, tree, reduce, zero)
@@ -146,11 +146,11 @@ test {
    testScatter = function()
       local njobs = 4
       local base = 2
-      local server, port = parallel.server('127.0.0.1')
-      local m = parallel.map(njobs - 1, function(njobs, base, port, mapid)
-         local parallel = require 'libparallel'
-         local Tree = require 'parallel.Tree'
-         local client = parallel.client('127.0.0.1', port)
+      local server, port = ipc.server('127.0.0.1')
+      local m = ipc.map(njobs - 1, function(njobs, base, port, mapid)
+         local ipc = require 'libipc'
+         local Tree = require 'ipc.Tree'
+         local client = ipc.client('127.0.0.1', port)
          local jobid = mapid + 1
          local tree = Tree(jobid, njobs, base, nil, client, '127.0.0.1')
          return tree.scatter(jobid)

@@ -10,31 +10,31 @@
 #include "map.h"
 #include "error.h"
 
-int parallel_getpid(lua_State *L) {
+int ipc_getpid(lua_State *L) {
    pid_t pid = getpid();
    lua_pushinteger(L, pid);
    return 1;
 }
 
-int parallel_getppid(lua_State *L) {
+int ipc_getppid(lua_State *L) {
    pid_t pid = getppid();
    lua_pushinteger(L, pid);
    return 1;
 }
 
-int parallel_gettid(lua_State *L) {
+int ipc_gettid(lua_State *L) {
    pthread_t tid = pthread_self();
    lua_pushinteger(L, (intptr_t)tid);
    return 1;
 }
 
-int parallel_fork(lua_State *L) {
+int ipc_fork(lua_State *L) {
    pid_t pid = fork();
    lua_pushinteger(L, pid);
    return 1;
 }
 
-int parallel_waitpid(lua_State *L) {
+int ipc_waitpid(lua_State *L) {
    int status;
    pid_t pid = lua_tointeger(L, 1);
    do {
@@ -50,7 +50,7 @@ int parallel_waitpid(lua_State *L) {
    return 0;
 }
 
-int parallel_link(lua_State *L) {
+int ipc_link(lua_State *L) {
    const char *src = lua_tostring(L, 1);
    const char *dst = lua_tostring(L, 2);
    int ret = link(src, dst);
@@ -58,7 +58,7 @@ int parallel_link(lua_State *L) {
    return 1;
 }
 
-int parallel_symlink(lua_State *L) {
+int ipc_symlink(lua_State *L) {
    const char *src = lua_tostring(L, 1);
    const char *dst = lua_tostring(L, 2);
    int ret = symlink(src, dst);
@@ -66,17 +66,17 @@ int parallel_symlink(lua_State *L) {
    return 1;
 }
 
-static const struct luaL_reg parallel_routines[] = {
+static const struct luaL_reg ipc_routines[] = {
    {"workqueue", workqueue_open},
    {"server", cliser_server},
    {"client", cliser_client},
-   {"getpid", parallel_getpid},
-   {"getppid", parallel_getppid},
-   {"gettid", parallel_gettid},
-   {"fork", parallel_fork},
-   {"waitpid", parallel_waitpid},
-   {"link", parallel_link},
-   {"symlink", parallel_symlink},
+   {"getpid", ipc_getpid},
+   {"getppid", ipc_getppid},
+   {"gettid", ipc_gettid},
+   {"fork", ipc_fork},
+   {"waitpid", ipc_waitpid},
+   {"link", ipc_link},
+   {"symlink", ipc_symlink},
    {"map", map_open},
    {NULL, NULL}
 };
@@ -125,34 +125,34 @@ static const struct luaL_reg map_routines[] = {
    {NULL, NULL}
 };
 
-DLL_EXPORT int luaopen_libparallel(lua_State *L) {
+DLL_EXPORT int luaopen_libipc(lua_State *L) {
    signal(SIGPIPE, SIG_IGN);  // don't die for SIGPIPE
-   luaL_newmetatable(L, "parallel.workqueue");
+   luaL_newmetatable(L, "ipc.workqueue");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaL_openlib(L, NULL, workqueue_routines, 0);
-   luaL_newmetatable(L, "parallel.server");
+   luaL_newmetatable(L, "ipc.server");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaL_openlib(L, NULL, server_routines, 0);
-   luaL_newmetatable(L, "parallel.server.client");
+   luaL_newmetatable(L, "ipc.server.client");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaL_openlib(L, NULL, server_client_routines, 0);
-   luaL_newmetatable(L, "parallel.client");
+   luaL_newmetatable(L, "ipc.client");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaL_openlib(L, NULL, client_routines, 0);
-   luaL_newmetatable(L, "parallel.map");
+   luaL_newmetatable(L, "ipc.map");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaL_openlib(L, NULL, map_routines, 0);
-   luaL_openlib(L, "libparallel", parallel_routines, 0);
+   luaL_openlib(L, "libipc", ipc_routines, 0);
    Lcliser_CharInit(L);
    Lcliser_ByteInit(L);
    Lcliser_ShortInit(L);

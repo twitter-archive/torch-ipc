@@ -1,12 +1,12 @@
-package = "parallel"
+package = "ipc"
 version = "scm-1"
 
 source = {
-   url = "git://github.com/twitter/torch-parallel.git",
+   url = "git://github.com/twitter/torch-ipc.git",
 }
 
 description = {
-   summary = "A set of primitives for parallel computation in Torch",
+   summary = "A set of primitives for ipc computation in Torch",
    homepage = "-",
    license = "MIT"
 }

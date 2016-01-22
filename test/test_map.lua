@@ -1,21 +1,21 @@
 local test = require 'regress'
-local parallel = require 'libparallel'
+local ipc = require 'libipc'
 
 test {
    testSingle = function()
-      local x = parallel.map(1, function(y) return y end, 42):join()
+      local x = ipc.map(1, function(y) return y end, 42):join()
       test.mustBeTrue(x == 42, 'expected 42, saw '..x)
    end,
 
    testMultiple = function()
-      local x,y,z = parallel.map(1, function(a, b, c) return a,b,c end, "hi", 42, {k=2}):join()
+      local x,y,z = ipc.map(1, function(a, b, c) return a,b,c end, "hi", 42, {k=2}):join()
       test.mustBeTrue(x == 'hi', 'expected "hi", saw '..x)
       test.mustBeTrue(y == 42, 'expected 42, saw '..y)
       test.mustBeTrue(z.k == 2, 'expected 2')
    end,
 
    testSingleWithN = function()
-      local x = {parallel.map(3, function(y) return y end, 42):join()}
+      local x = {ipc.map(3, function(y) return y end, 42):join()}
       test.mustBeTrue(#x == 3, 'expected 3, saw '..#x)
       test.mustBeTrue(x[1] == 42, 'expected 42, saw '..x[1])
       test.mustBeTrue(x[2] == 42, 'expected 42, saw '..x[2])
@@ -23,7 +23,7 @@ test {
    end,
 
    testMultipleWithN = function()
-      local x1,y1,z1,x2,y2,z2 = parallel.map(2, function(a, b, c) return a,b,c end, "hi", 42, {k=2}):join()
+      local x1,y1,z1,x2,y2,z2 = ipc.map(2, function(a, b, c) return a,b,c end, "hi", 42, {k=2}):join()
       test.mustBeTrue(x1 == 'hi', 'expected "hi", saw '..x1)
       test.mustBeTrue(y1 == 42, 'expected 42, saw '..y1)
       test.mustBeTrue(z1.k == 2, 'expected 2')
@@ -33,19 +33,19 @@ test {
    end,
 
    testNil = function()
-      local x, y = parallel.map(1, function(x, y) return nil, y end, nil, 42):join()
+      local x, y = ipc.map(1, function(x, y) return nil, y end, nil, 42):join()
       test.mustBeTrue(x == nil, 'expected nil, saw '..(x or 'nil'))
       test.mustBeTrue(y == 42, 'expected 42, saw '..y)
    end,
 
    testErrors = function()
-      local ok, msg = pcall(function() parallel.map(1, function() error('boom') end):join() end)
+      local ok, msg = pcall(function() ipc.map(1, function() error('boom') end):join() end)
       test.mustBeTrue(ok == false, 'expected the join to fail')
       test.mustBeTrue(type(msg) == 'string', 'expected the error message to be a string')
    end,
 
    testMoreErrors = function()
-      local ok, msg = pcall(function() parallel.map(2, function(idx)
+      local ok, msg = pcall(function() ipc.map(2, function(idx)
          if idx == 1 then
             error('boom')
          else
@@ -57,7 +57,7 @@ test {
    end,
 
    testCheckErrors = function()
-      local m = parallel.map(2, function(idx)
+      local m = ipc.map(2, function(idx)
          local sys = require 'sys'
          if idx == 1 then
             error('boom')
@@ -76,12 +76,12 @@ test {
    end,
 
    testLuaCheckStack = function()
-      local ret = { parallel.map(1000, function() return 1 end):join() }
+      local ret = { ipc.map(1000, function() return 1 end):join() }
       test.mustBeTrue(#ret == 1000, 'expected 1000 elements, saw '..#ret)
    end,
 
    testLastArg = function()
-      local ret = { parallel.map(4, function(s, id) return id end, "hi"):join() }
+      local ret = { ipc.map(4, function(s, id) return id end, "hi"):join() }
       test.mustBeTrue(#ret == 4, 'expected 4 elements, saw '..#ret)
       test.mustBeTrue(ret[1] == 1, 'expected 1 at 1')
       test.mustBeTrue(ret[2] == 2, 'expected 2 at 2')

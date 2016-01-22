@@ -1,4 +1,4 @@
-local parallel = require 'libparallel'
+local ipc = require 'libipc'
 
 -- Make 3 files
 torch.save('f1.t7', torch.randn(1, 2))
@@ -6,14 +6,14 @@ torch.save('f2.t7', torch.randn(2, 2))
 torch.save('f3.t7', torch.randn(3, 2))
 
 -- Create a named workqueue
-local q = parallel.workqueue('my queue')
+local q = ipc.workqueue('my queue')
 
 -- Create 2 background workers that read from the named workqueue
-local workers = parallel.map(2, function()
+local workers = ipc.map(2, function()
    -- This function is not a closure, its a totally clean Lua environment
-   local parallel = require 'libparallel'
+   local ipc = require 'libipc'
    -- Open the queue by name (the main thread already created it)
-   local q = parallel.workqueue('my queue')
+   local q = ipc.workqueue('my queue')
    repeat
       -- Read the next file name off the workqueue
       local fileName = q:read()

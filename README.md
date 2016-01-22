@@ -1,5 +1,5 @@
-Parallel
-========
+IPC
+===
 
 A set of primitives that extend Torch for high performance
 parallel computation across thread and process boundaries.
@@ -41,9 +41,9 @@ other over TCP.
 
 ```lua
 -- Create a server
-local server = parallel.server('127.0.0.1', 8080)
+local server = ipc.server('127.0.0.1', 8080)
 -- Create a client and connect to the server
-local client = parallel.client('127.0.0.1', 8080)
+local client = ipc.client('127.0.0.1', 8080)
 -- Say hello
 client:send('hi')
 -- Listen for any client to say something
@@ -65,7 +65,7 @@ file or socket descriptor.
 ```lua
 -- See examples/map.lua for the complete listing
 -- Load 3 files in parallel
-local t1,t2,t3 = parallel.map(3, function(fileNames, mapid)
+local t1,t2,t3 = ipc.map(3, function(fileNames, mapid)
    return torch.load(fileNames[mapid])
 end, {'f1.t7', 'f2.t7', 'f3.t7'}):join()
 ```
@@ -81,14 +81,14 @@ thread.
 ```lua
 -- See examples/workqueue.lua for the complete listing
 -- Create a named workqueue
-local q = parallel.workqueue('my queue')
+local q = ipc.workqueue('my queue')
 
 -- Create 2 background workers that read from the named workqueue
-local workers = parallel.map(2, function()
+local workers = ipc.map(2, function()
    -- This function is not a closure, its a totally clean Lua environment
-   local parallel = require 'libparallel'
+   local ipc = require 'libipc'
    -- Open the queue by name (the main thread already created it)
-   local q = parallel.workqueue('my queue')
+   local q = ipc.workqueue('my queue')
    repeat
       -- Read the next file name off the workqueue
       local fileName = q:read()

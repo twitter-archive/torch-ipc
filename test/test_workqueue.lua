@@ -1,11 +1,11 @@
 local test = require 'regress'
-local parallel = require 'libparallel'
+local ipc = require 'libipc'
 
-local q = parallel.workqueue('test')
+local q = ipc.workqueue('test')
 
-local echo = parallel.map(1, function()
-   local parallel = require 'libparallel'
-   local q = parallel.workqueue('test')
+local echo = ipc.map(1, function()
+   local ipc = require 'libipc'
+   local q = ipc.workqueue('test')
    while true do
       local msg = q:read()
       if msg == nil then

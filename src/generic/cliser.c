@@ -53,7 +53,7 @@ static void Lcliser_(init_copy_context)(copy_context_t *copy_context) {
 static int Lcliser_(write_contiguous)(lua_State *L, int sock, real *ptr, size_t count, copy_context_t *copy_context) {
    Lcliser_(init_copy_context)(copy_context);
    if (copy_context->use_fastpath) {
-      double t0 = _parallel_seconds();
+      double t0 = _ipc_seconds();
       remote_ptr_t remote_ptr;
       remote_ptr.ptr = ptr;
       remote_ptr.count = count;
@@ -64,16 +64,16 @@ static int Lcliser_(write_contiguous)(lua_State *L, int sock, real *ptr, size_t 
       int not_used;
       ret = sock_recv_raw(L, sock, &not_used, sizeof(not_used), copy_context);
       if (ret) return ret;
-      copy_context->tx.cuda_ipc_seconds += (_parallel_seconds() - t0);
+      copy_context->tx.cuda_ipc_seconds += (_ipc_seconds() - t0);
       copy_context->tx.cuda_ipc_bytes += count * ELEMENT_SIZE;
    } else {
       int which = 0;
       size_t last_cb = 0;
       while (count > 0) {
          if (last_cb) {
-            double t0 = _parallel_seconds();
+            double t0 = _ipc_seconds();
             THCudaCheck(cudaEventSynchronize(copy_context->event));
-            copy_context->tx.cuda_sync_seconds += (_parallel_seconds() - t0);
+            copy_context->tx.cuda_sync_seconds += (_ipc_seconds() - t0);
          }
          size_t cb = (count > CUDA_BLOCK_COUNT) ? CUDA_BLOCK_COUNT : count;
          THCudaCheck(cudaMemcpyAsync(copy_context->buf[which], ptr, cb * ELEMENT_SIZE, cudaMemcpyDeviceToHost, 0));
@@ -88,9 +88,9 @@ static int Lcliser_(write_contiguous)(lua_State *L, int sock, real *ptr, size_t 
          last_cb = cb;
       }
       if (last_cb) {
-         double t0 = _parallel_seconds();
+         double t0 = _ipc_seconds();
          THCudaCheck(cudaEventSynchronize(copy_context->event));
-         copy_context->tx.cuda_sync_seconds += (_parallel_seconds() - t0);
+         copy_context->tx.cuda_sync_seconds += (_ipc_seconds() - t0);
          return sock_send_raw(L, sock, copy_context->buf[which ^ 1], last_cb * ELEMENT_SIZE, copy_context);
       }
    }
@@ -110,7 +110,7 @@ static int Lcliser_(has_overlap)(real *p0, size_t c0, real *p1, size_t c1) {
 static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t count, copy_context_t *copy_context) {
    Lcliser_(init_copy_context)(copy_context);
    if (copy_context->use_fastpath) {
-      double t0 = _parallel_seconds();
+      double t0 = _ipc_seconds();
       remote_ptr_t remote_ptr;
       int ret = sock_recv_raw(L, sock, &remote_ptr, sizeof(remote_ptr_t), copy_context);
       if (ret) return ret;
@@ -122,7 +122,7 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
          if (copy_context->remote_ptrs[cb].sock == sock) {
             ret = Lcliser_(has_overlap)(remote_ptr.ptr, remote_ptr.count, copy_context->remote_ptrs[cb].ptr, copy_context->remote_ptrs[cb].count);
             if (ret) {
-               printf("WARN: torch-parallel: CUDA IPC evicting %p due to ptr reuse, performance will drastically suffer\n", remote_ptr.ptr);
+               printf("WARN: torch-ipc: CUDA IPC evicting %p due to ptr reuse, performance will drastically suffer\n", remote_ptr.ptr);
                THCudaCheck(cudaIpcCloseMemHandle(copy_context->remote_ptrs[cb].dev_ptr));
                memmove(copy_context->remote_ptrs + cb, copy_context->remote_ptrs + cb + 1, (copy_context->num_remote_ptrs - (cb + 1)) * sizeof(remote_ptr_t));
                copy_context->num_remote_ptrs--;
@@ -133,7 +133,7 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
       }
       if (cb == copy_context->num_remote_ptrs) {
          if (copy_context->num_remote_ptrs == CUDA_MAX_REMOTE_PTRS) {
-            printf("WARN: torch-parallel: CUDA IPC evicting %p due to max limit (%d) reached, performance will drastically suffer\n", copy_context->remote_ptrs[0].ptr, CUDA_MAX_REMOTE_PTRS);
+            printf("WARN: torch-ipc: CUDA IPC evicting %p due to max limit (%d) reached, performance will drastically suffer\n", copy_context->remote_ptrs[0].ptr, CUDA_MAX_REMOTE_PTRS);
             THCudaCheck(cudaIpcCloseMemHandle(copy_context->remote_ptrs[0].dev_ptr));
             memmove(copy_context->remote_ptrs, copy_context->remote_ptrs + 1, (CUDA_MAX_REMOTE_PTRS - 1) * sizeof(remote_ptr_t));
             cb--;
@@ -151,7 +151,7 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
       int not_used = 1;
       ret = sock_send_raw(L, sock, &not_used, sizeof(not_used), copy_context);
       if (ret) return ret;
-      copy_context->rx.cuda_ipc_seconds += (_parallel_seconds() - t0);
+      copy_context->rx.cuda_ipc_seconds += (_ipc_seconds() - t0);
       copy_context->rx.cuda_ipc_bytes += count * ELEMENT_SIZE;
    } else {
       int which = 0;
@@ -161,9 +161,9 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
       }
       while (count > 0) {
          if (last_cb) {
-            double t0 = _parallel_seconds();
+            double t0 = _ipc_seconds();
             THCudaCheck(cudaEventSynchronize(copy_context->event));
-            copy_context->rx.cuda_sync_seconds += (_parallel_seconds() - t0);
+            copy_context->rx.cuda_sync_seconds += (_ipc_seconds() - t0);
             THCudaCheck(cudaMemcpyAsync(ptr, copy_context->buf[which ^ 1], last_cb * ELEMENT_SIZE, cudaMemcpyHostToDevice, 0));
             THCudaCheck(cudaEventRecord(copy_context->event, 0));
             ptr += last_cb;
@@ -176,9 +176,9 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
          last_cb = cb;
       }
       if (last_cb) {
-         double t0 = _parallel_seconds();
+         double t0 = _ipc_seconds();
          THCudaCheck(cudaEventSynchronize(copy_context->event));
-         copy_context->rx.cuda_sync_seconds += (_parallel_seconds() - t0);
+         copy_context->rx.cuda_sync_seconds += (_ipc_seconds() - t0);
          THCudaCheck(cudaMemcpy(ptr, copy_context->buf[which ^ 1], last_cb * ELEMENT_SIZE, cudaMemcpyHostToDevice));
       }
    }

@@ -11,7 +11,7 @@ Options:
 ]]
 
 -- Load our requires
-local parallel = require 'libparallel'
+local ipc = require 'libipc'
 local sys = require 'sys'
 
 -- Load cutorch if CUDA was requested
@@ -41,7 +41,7 @@ local function printStat(n, t, i)
 end
 
 if opt.server > 0 then
-   local server = parallel.server(opt.host, opt.port)
+   local server = ipc.server(opt.host, opt.port)
    local t0 = torch.randn(unpack(dimensions)):float()
    if opt.cuda then
       t0 = t0:cuda()
@@ -79,7 +79,7 @@ if opt.server > 0 then
    end
    server:close()
 else
-   local client = parallel.client(opt.host, opt.port)
+   local client = ipc.client(opt.host, opt.port)
    local t0 = torch.randn(unpack(dimensions)):float()
    if opt.cuda then
       t0 = t0:cuda()

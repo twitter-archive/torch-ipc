@@ -1,13 +1,13 @@
 local test = require 'regress'
 pcall(require, 'cutorch')
-local parallel = require 'libparallel'
+local ipc = require 'libipc'
 
 local function testCSN(numClients, test, callbackS, callbackC, extra)
-   local server,port = parallel.server()
-   local clients = parallel.map(numClients, function(port, callbackC, extra)
+   local server,port = ipc.server()
+   local clients = ipc.map(numClients, function(port, callbackC, extra)
       local sys = require 'sys'
-      local parallel = require 'libparallel'
-      local client = parallel.client(port)
+      local ipc = require 'libipc'
+      local client = ipc.client(port)
       callbackC(client, extra)
       assert(client:recv() == "bye")
       client:close()
@@ -80,12 +80,12 @@ test {
    end,
 
    testSlowStart = function()
-      local m = parallel.map(1, function()
-         local parallel = require 'libparallel'
-         return parallel.client('127.0.0.1', 8080)
+      local m = ipc.map(1, function()
+         local ipc = require 'libipc'
+         return ipc.client('127.0.0.1', 8080)
       end)
       sys.sleep(2)
-      local server = parallel.server('127.0.0.1', 8080)
+      local server = ipc.server('127.0.0.1', 8080)
       local client = m:join()
       server:clients(1, function(client) end)
       client:close()
@@ -277,10 +277,10 @@ test {
    end,
 
    testSerialize = function()
-      local server,port = parallel.server()
-      local t = parallel.map(1, function(port)
-         local parallel = require 'libparallel'
-         return parallel.client(port)
+      local server,port = ipc.server()
+      local t = ipc.map(1, function(port)
+         local ipc = require 'libipc'
+         return ipc.client(port)
       end, port)
       server:clients(1, function(client) end)
       local client = t:join()
@@ -292,10 +292,10 @@ test {
    end,
 
    testNetStats = function()
-      local server,port = parallel.server()
-      local t = parallel.map(1, function(port)
-         local parallel = require 'libparallel'
-         return parallel.client(port)
+      local server,port = ipc.server()
+      local t = ipc.map(1, function(port)
+         local ipc = require 'libipc'
+         return ipc.client(port)
       end, port)
       server:clients(1, function(client) end)
       local client = t:join()

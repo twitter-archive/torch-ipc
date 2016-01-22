@@ -120,7 +120,7 @@ int workqueue_open(lua_State *L) {
    pthread_mutex_unlock(&workqueue_mutex);
    context_t *context = (context_t *)lua_newuserdata(L, sizeof(context_t));
    context->workqueue = workqueue;
-   luaL_getmetatable(L, "parallel.workqueue");
+   luaL_getmetatable(L, "ipc.workqueue");
    lua_setmetatable(L, -2);
    return 1;
 }

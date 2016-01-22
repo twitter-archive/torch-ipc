@@ -1,4 +1,4 @@
-local walkTable = require 'parallel.utils'.walkTable
+local walkTable = require 'ipc.utils'.walkTable
 
 local function NullTree()
    return {

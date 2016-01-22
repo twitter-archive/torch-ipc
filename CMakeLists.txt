@@ -13,7 +13,7 @@ ENDIF ()
 
 SET(CMAKE_C_FLAGS "--std=c99 -pedantic -Werror -Wall -Wextra -Wno-unused-function -D_GNU_SOURCE ${CMAKE_C_FLAGS}")
 SET(src
-   src/parallel.c
+   src/ipc.c
    src/workqueue.c
    src/ringbuffer.c
    src/serialize.c
@@ -30,19 +30,19 @@ SET(luasrc
    lua/utils.lua
 )
 
-ADD_TORCH_PACKAGE(parallel "${src}" "${luasrc}" "A set of primitives for parallel computation in Torch")
+ADD_TORCH_PACKAGE(ipc "${src}" "${luasrc}" "A set of primitives for ipc computation in Torch")
 
 IF (CUDA_FOUND AND ("$ENV{CUDA}" STREQUAL "YES"))
    INCLUDE_DIRECTORIES(${CUDA_INCLUDE_DIRS})
    INCLUDE_DIRECTORIES("${CUDA_SDK_ROOT_DIR}/common/inc")
    SET(CMAKE_C_FLAGS "-DUSE_CUDA ${CMAKE_C_FLAGS}")
    IF (NOT "$ENV{TH_ONLY_STATIC}" STREQUAL "YES")
-      TARGET_LINK_LIBRARIES(parallel luaT TH THC)
+      TARGET_LINK_LIBRARIES(ipc luaT TH THC)
    ENDIF()
 ELSE()
-   TARGET_LINK_LIBRARIES(parallel luaT TH)
+   TARGET_LINK_LIBRARIES(ipc luaT TH)
 ENDIF()
 
-SET_TARGET_PROPERTIES(parallel_static PROPERTIES COMPILE_FLAGS "-fPIC -DSTATIC_TH")
+SET_TARGET_PROPERTIES(ipc_static PROPERTIES COMPILE_FLAGS "-fPIC -DSTATIC_TH")
 
-INSTALL(FILES ${luasrc} DESTINATION "${Torch_INSTALL_LUA_PATH_SUBDIR}/parallel")
+INSTALL(FILES ${luasrc} DESTINATION "${Torch_INSTALL_LUA_PATH_SUBDIR}/ipc")

@@ -69,7 +69,7 @@ static void _replace_require(lua_State *L) {
 #endif
 
 typedef int (*ThreadInitFunc) (lua_State *L);
-ThreadInitFunc _parallel_static_init_thread = NULL;
+ThreadInitFunc _ipc_static_init_thread = NULL;
 
 static void* thread_func(void *arg) {
 #ifdef _OPENMP
@@ -81,15 +81,15 @@ static void* thread_func(void *arg) {
    lua_State *L = luaL_newstate();
    luaL_openlibs(L);
 #ifdef STATIC_TH
-   if (_parallel_static_init_thread) {
-      _parallel_static_init_thread(L);
+   if (_ipc_static_init_thread) {
+      _ipc_static_init_thread(L);
    }
 #else
 #ifdef __APPLE__
    _replace_require(L);
 #endif
-   // in order to deserialize arguments we need torch and libparallel
-   if (luaL_loadstring(L, "require 'torch'; require 'libparallel'")) {
+   // in order to deserialize arguments we need torch and libipc
+   if (luaL_loadstring(L, "require 'torch'; require 'libipc'")) {
       lua_close(L);
       return NULL;
    }
@@ -134,7 +134,7 @@ int map_open(lua_State *L) {
    map_t *map = (map_t *)lua_newuserdata(L, sizeof(map_t));
    map->num_threads = num_threads;
    map->threads = threads;
-   luaL_getmetatable(L, "parallel.map");
+   luaL_getmetatable(L, "ipc.map");
    lua_setmetatable(L, -2);
    return 1;
 }

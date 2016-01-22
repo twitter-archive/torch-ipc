@@ -1,5 +1,5 @@
-local parallel = require 'libparallel'
-local walkTable = require 'parallel.utils'.walkTable
+local ipc = require 'libipc'
+local walkTable = require 'ipc.utils'.walkTable
 
 local function rcsvAllPairs(b, n, i, d, f)
    local function ff(a, b, d)
@@ -76,7 +76,7 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
 
    local function initialClient()
       -- Open a new server, we may end up a parent (reuse the same server upvalue)
-      server, port = parallel.server(host, tonumber(port))
+      server, port = ipc.server(host, tonumber(port))
       -- Register our address and nodeIndex
       local msg = client:recv()
       assert(msg.q == "address?")
@@ -111,7 +111,7 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
          else
             -- A new parent is required (reuse the same client upvalue)
             client:close()
-            client = parallel.client(node.connect.host, node.connect.port)
+            client = ipc.client(node.connect.host, node.connect.port)
             assert(client:recv() == "order?")
             client:send({
                order = nodeIndex,
