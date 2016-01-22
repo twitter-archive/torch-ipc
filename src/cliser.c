@@ -270,9 +270,11 @@ int cliser_client(lua_State *L) {
    client_t *client = (client_t *)calloc(1, sizeof(client_t));
    client->sock = sock;
 #ifndef __APPLE__
+#ifdef STATIC_TH
    if (((struct sockaddr_in *)&bind_addr)->sin_addr.s_addr == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
       client->copy_context.use_fastpath = 1;
    }
+#endif
 #endif
    client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
    client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
@@ -357,9 +359,11 @@ int cliser_server_clients(lua_State *L) {
       client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
       client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
 #ifndef __APPLE__
+#ifdef STATIC_TH
       if (server->ip_address == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
          client->copy_context.use_fastpath = 1;
       }
+#endif
 #endif
       insert_client(server, client);
    }
