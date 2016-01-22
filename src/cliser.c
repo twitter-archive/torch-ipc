@@ -20,6 +20,16 @@
 #define DEFAULT_HOST "127.0.0.1"
 #define DEFAULT_TIMEOUT_SECONDS (5*60)
 
+static int _use_fastpath = 0;
+
+int cliser_use_fastpath(lua_State *L) {
+   if (lua_gettop(L) > 0) {
+      _use_fastpath = lua_toboolean(L, 1);
+   }
+   lua_pushboolean(L, _use_fastpath);
+   return 1;
+}
+
 typedef struct net_stats_t {
    uint64_t num_bytes;
    uint64_t num_regions;
@@ -270,11 +280,9 @@ int cliser_client(lua_State *L) {
    client_t *client = (client_t *)calloc(1, sizeof(client_t));
    client->sock = sock;
 #ifndef __APPLE__
-#ifdef STATIC_TH
    if (((struct sockaddr_in *)&bind_addr)->sin_addr.s_addr == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
-      client->copy_context.use_fastpath = 1;
+      client->copy_context.use_fastpath = _use_fastpath && 1;
    }
-#endif
 #endif
    client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
    client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
@@ -359,11 +367,9 @@ int cliser_server_clients(lua_State *L) {
       client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
       client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
 #ifndef __APPLE__
-#ifdef STATIC_TH
       if (server->ip_address == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
-         client->copy_context.use_fastpath = 1;
+         client->copy_context.use_fastpath = _use_fastpath && 1;
       }
-#endif
 #endif
       insert_client(server, client);
    }

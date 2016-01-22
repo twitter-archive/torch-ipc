@@ -3,6 +3,8 @@
 
 #include "luaT.h"
 
+int cliser_use_fastpath(lua_State *L);
+
 int cliser_server(lua_State *L);
 int cliser_server_close(lua_State *L);
 int cliser_server_clients(lua_State *L);
