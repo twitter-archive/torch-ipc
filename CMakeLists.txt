@@ -11,6 +11,8 @@ IF(OPENMP_FOUND)
    SET(CMAKE_C_FLAGS "-D_OPENMP ${CMAKE_C_FLAGS}")
 ENDIF ()
 
+SET(BUILD_STATIC YES) # makes sure static targets are enabled in ADD_TORCH_PACKAGE
+
 SET(CMAKE_C_FLAGS "--std=c99 -pedantic -Werror -Wall -Wextra -Wno-unused-function -D_GNU_SOURCE ${CMAKE_C_FLAGS}")
 SET(src
    src/ipc.c
