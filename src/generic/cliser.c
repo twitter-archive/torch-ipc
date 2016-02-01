@@ -30,7 +30,7 @@
 #ifdef CLISER_IS_CUDA
 #define CUDA_BLOCK_SIZE (512*1024)
 #define CUDA_BLOCK_COUNT (CUDA_BLOCK_SIZE/ELEMENT_SIZE)
-#define CUDA_MAX_REMOTE_PTRS (64)
+#define CUDA_REMOTE_PTRS (256)
 
 static THCState *getCutorchState(lua_State* L) {
    lua_getglobal(L, "cutorch");
@@ -46,7 +46,8 @@ static void Lcliser_(init_copy_context)(copy_context_t *copy_context) {
       THCudaCheck(cudaEventCreateWithFlags(&copy_context->event, cudaEventBlockingSync));
       copy_context->buf[0] = malloc(2 * CUDA_BLOCK_SIZE);
       copy_context->buf[1] = ((uint8_t *)copy_context->buf[0]) + CUDA_BLOCK_SIZE;
-      copy_context->remote_ptrs = malloc(CUDA_MAX_REMOTE_PTRS * sizeof(remote_ptr_t));
+      copy_context->max_remote_ptrs = CUDA_REMOTE_PTRS;
+      copy_context->remote_ptrs = malloc(copy_context->max_remote_ptrs * sizeof(remote_ptr_t));
    }
 }
 
@@ -132,12 +133,9 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
          cb++;
       }
       if (cb == copy_context->num_remote_ptrs) {
-         if (copy_context->num_remote_ptrs == CUDA_MAX_REMOTE_PTRS) {
-            printf("WARN: torch-ipc: CUDA IPC evicting %p due to max limit (%d) reached, performance will drastically suffer\n", copy_context->remote_ptrs[0].ptr, CUDA_MAX_REMOTE_PTRS);
-            THCudaCheck(cudaIpcCloseMemHandle(copy_context->remote_ptrs[0].dev_ptr));
-            memmove(copy_context->remote_ptrs, copy_context->remote_ptrs + 1, (CUDA_MAX_REMOTE_PTRS - 1) * sizeof(remote_ptr_t));
-            cb--;
-            copy_context->num_remote_ptrs--;
+         if (copy_context->num_remote_ptrs == copy_context->max_remote_ptrs) {
+            copy_context->max_remote_ptrs += CUDA_REMOTE_PTRS;
+            copy_context->remote_ptrs = realloc(copy_context->remote_ptrs, copy_context->max_remote_ptrs * sizeof(remote_ptr_t));
          }
          THCudaCheck(cudaIpcOpenMemHandle(&copy_context->remote_ptrs[cb].dev_ptr, remote_ptr.handle, cudaIpcMemLazyEnablePeerAccess));
          memcpy(&copy_context->remote_ptrs[cb].handle, &remote_ptr.handle, sizeof(cudaIpcMemHandle_t));

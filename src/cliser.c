@@ -57,6 +57,7 @@ typedef struct copy_context_t {
    cudaEvent_t event;
    remote_ptr_t *remote_ptrs;
    size_t num_remote_ptrs;
+   size_t max_remote_ptrs;
    void *buf[2];
 #endif
    net_stats_t tx;
