@@ -35,7 +35,7 @@ SET(luasrc
 
 ADD_TORCH_PACKAGE(ipc "${src}" "${luasrc}" "A set of primitives for ipc computation in Torch")
 
-IF (CUDA_FOUND AND ("$ENV{CUDA}" STREQUAL "YES"))
+IF (CUDA_FOUND AND NOT ("$ENV{CUDA}" STREQUAL "NO"))
    INCLUDE_DIRECTORIES(${CUDA_INCLUDE_DIRS})
    INCLUDE_DIRECTORIES("${CUDA_SDK_ROOT_DIR}/common/inc")
    SET(CMAKE_C_FLAGS "-DUSE_CUDA ${CMAKE_C_FLAGS}")

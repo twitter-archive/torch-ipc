@@ -68,7 +68,6 @@ int ipc_symlink(lua_State *L) {
 }
 
 static const struct luaL_reg ipc_routines[] = {
-   {"useFastpath", cliser_use_fastpath},
    {"workqueue", workqueue_open},
    {"server", cliser_server},
    {"client", cliser_client},

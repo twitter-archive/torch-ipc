@@ -20,16 +20,6 @@
 #define DEFAULT_HOST "127.0.0.1"
 #define DEFAULT_TIMEOUT_SECONDS (5*60)
 
-static int _use_fastpath = 0;
-
-int cliser_use_fastpath(lua_State *L) {
-   if (lua_gettop(L) > 0) {
-      _use_fastpath = lua_toboolean(L, 1);
-   }
-   lua_pushboolean(L, _use_fastpath);
-   return 1;
-}
-
 typedef struct net_stats_t {
    uint64_t num_bytes;
    uint64_t num_regions;
@@ -232,6 +222,48 @@ int cliser_server(lua_State *L) {
    return 2;
 }
 
+static int can_use_fastpath(lua_State *L, int sock, uint32_t bind_addr, uint32_t addr) {
+#if defined(USE_CUDA) && !defined(__APPLE__)
+   if (bind_addr == addr) {
+      int device;
+      THCudaCheck(cudaGetDevice(&device));
+      int ret = send(sock, &device, sizeof(device), 0);
+      if (ret < 0) {
+         close(sock);
+         return LUA_HANDLE_ERROR(L, errno);
+      }
+      int remote_device;
+      ret = recv(sock, &remote_device, sizeof(remote_device), 0);
+      if (ret <= 0) {
+         close(sock);
+         return LUA_HANDLE_ERROR(L, errno);
+      }
+      if (device != remote_device) {
+         int can;
+         THCudaCheck(cudaDeviceCanAccessPeer(&can, device, remote_device));
+         if (can) {
+            cudaError_t err = cudaDeviceEnablePeerAccess(remote_device, 0);
+            if (err == cudaSuccess || err == cudaErrorPeerAccessAlreadyEnabled) {
+               if (err == cudaErrorPeerAccessAlreadyEnabled) cudaGetLastError();
+               fprintf(stderr, "INFO: torch-ipc: CUDA IPC enabled between GPU%d and GPU%d\n", device, remote_device);
+               return 1;
+            } else {
+               fprintf(stderr, "WARN: torch-ipc: CUDA IPC disabled between GPU%d and GPU%d: %s\n", device, remote_device, cudaGetErrorString(err));
+            }
+         } else {
+            fprintf(stderr, "INFO: torch-ipc: CUDA IPC not possible between GPU%d and GPU%d\n", device, remote_device);
+         }
+      }
+   }
+#else
+   (void)L;
+   (void)sock;
+   (void)bind_addr;
+   (void)addr;
+#endif
+   return 0;
+}
+
 int cliser_client(lua_State *L) {
 #ifdef USE_CUDA
    // sometimes cutorch is loaded late, this is a good spot to try and register...
@@ -278,16 +310,13 @@ int cliser_client(lua_State *L) {
       close(sock);
       return LUA_HANDLE_ERROR(L, errno);
    }
+   int use_fastpath = can_use_fastpath(L, sock, ((struct sockaddr_in *)&bind_addr)->sin_addr.s_addr, ((struct sockaddr_in *)&addr)->sin_addr.s_addr);
    client_t *client = (client_t *)calloc(1, sizeof(client_t));
    client->sock = sock;
-#ifndef __APPLE__
-   if (((struct sockaddr_in *)&bind_addr)->sin_addr.s_addr == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
-      client->copy_context.use_fastpath = _use_fastpath && 1;
-   }
-#endif
    client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
    client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
    client->ref_count = 1;
+   client->copy_context.use_fastpath = use_fastpath;
    client_t **clientp = (client_t **)lua_newuserdata(L, sizeof(client_t *));
    *clientp = client;
    luaL_getmetatable(L, "ipc.client");
@@ -362,16 +391,13 @@ int cliser_server_clients(lua_State *L) {
       int sock = ret;
       int value = 1;
       ret = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value));
-      if (ret) HANDLE_ERROR(errno);
+      if (ret) return LUA_HANDLE_ERROR(L, errno);
+      int use_fastpath = can_use_fastpath(L, sock, server->ip_address, ((struct sockaddr_in *)&addr)->sin_addr.s_addr);
       client_t *client = (client_t *)calloc(1, sizeof(client_t));
       client->sock = sock;
       client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
       client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
-#ifndef __APPLE__
-      if (server->ip_address == ((struct sockaddr_in *)&addr)->sin_addr.s_addr) {
-         client->copy_context.use_fastpath = _use_fastpath && 1;
-      }
-#endif
+      client->copy_context.use_fastpath = use_fastpath;
       insert_client(server, client);
    }
    client_t **clients = alloca(server->num_clients * sizeof(client_t*));
