@@ -9,6 +9,7 @@
 #include "cliser.h"
 #include "map.h"
 #include "error.h"
+#include "spawn.h"
 
 int ipc_getpid(lua_State *L) {
    pid_t pid = getpid();
@@ -79,6 +80,7 @@ static const struct luaL_reg ipc_routines[] = {
    {"link", ipc_link},
    {"symlink", ipc_symlink},
    {"map", map_open},
+   {"spawn", spawn_open},
    {NULL, NULL}
 };
 
@@ -126,6 +128,16 @@ static const struct luaL_reg map_routines[] = {
    {NULL, NULL}
 };
 
+static const struct luaL_reg spawn_routines[] = {
+   {"wait", spawn_wait},
+   {"close", spawn_close},
+   {"stdin", spawn_stdin},
+   {"stdout", spawn_stdout},
+   {"stderr", spawn_stderr},
+   {"__gc", spawn_gc},
+   {NULL, NULL}
+};
+
 DLL_EXPORT int luaopen_libipc(lua_State *L) {
    signal(SIGPIPE, SIG_IGN);  // don't die for SIGPIPE
    luaL_newmetatable(L, "ipc.workqueue");
@@ -153,6 +165,11 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaL_openlib(L, NULL, map_routines, 0);
+   luaL_newmetatable(L, "ipc.spawn");
+   lua_pushstring(L, "__index");
+   lua_pushvalue(L, -2);
+   lua_settable(L, -3);
+   luaL_openlib(L, NULL, spawn_routines, 0);
    luaL_openlib(L, "libipc", ipc_routines, 0);
    Lcliser_CharInit(L);
    Lcliser_ByteInit(L);

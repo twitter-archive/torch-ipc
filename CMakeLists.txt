@@ -22,6 +22,7 @@ SET(src
    src/cliser.c
    src/map.c
    src/error.c
+   src/spawn.c
 )
 SET(luasrc
    lua/Tree.lua
