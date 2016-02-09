@@ -24,6 +24,7 @@ test {
             '-c',
             'echo hi 1>&2',
          },
+         stderr = true,
       })
       local line = p:stderr():read('*all')
       assert(line == 'hi\n')

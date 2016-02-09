@@ -67,6 +67,11 @@ int spawn_open(lua_State *L) {
    }
    lua_pop(L, 1);
 
+   lua_pushstring(L, "stderr");
+   lua_gettable(L, 1);
+   int num_pipes = lua_toboolean(L, -1) ? 3 : 2;
+   lua_pop(L, 1);
+
    spawn_t *spawn = calloc(sizeof(spawn_t), 1);
 
    int ret = posix_spawn_file_actions_init(&spawn->file_actions);
@@ -74,7 +79,7 @@ int spawn_open(lua_State *L) {
       spawn_destroy(spawn);
       return LUA_HANDLE_ERROR(L, errno);
    }
-   for (int i = 0; i < 3; i++) {
+   for (int i = 0; i < num_pipes; i++) {
       ret = pipe(spawn->fd[i]);
       if (ret) {
          spawn_destroy(spawn);
@@ -114,8 +119,10 @@ int spawn_open(lua_State *L) {
    spawn->fd[0][0] = 0;
    close(spawn->fd[1][1]);
    spawn->fd[1][1] = 0;
-   close(spawn->fd[2][1]);
-   spawn->fd[2][1] = 0;
+   if (spawn->fd[2][1]) {
+      close(spawn->fd[2][1]);
+      spawn->fd[2][1] = 0;
+   }
 
    spawn_t **uspawn = lua_newuserdata(L, sizeof(spawn_t *));
    *uspawn = spawn;
