@@ -16,6 +16,7 @@ typedef struct ringbuffer_t {
 
 ringbuffer_t* ringbuffer_create(size_t cb);
 void ringbuffer_destroy(ringbuffer_t* rb);
+void ringbuffer_grow_by(ringbuffer_t *rb, size_t cb);
 size_t ringbuffer_write(ringbuffer_t* rb, const void* in, size_t cb);
 size_t ringbuffer_read(ringbuffer_t* rb, void* out, size_t cb);
 size_t ringbuffer_peek(ringbuffer_t* rb);

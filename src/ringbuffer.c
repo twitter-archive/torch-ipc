@@ -18,6 +18,20 @@ void ringbuffer_destroy(ringbuffer_t* rb) {
    free(rb);
 }
 
+void ringbuffer_grow_by(ringbuffer_t *rb, size_t cb) {
+   size_t new_cb = rb->cb + cb;
+   uint8_t *new_buf = malloc(new_cb);
+   size_t rcb = ringbuffer_read(rb, new_buf, new_cb);
+   free(rb->buf);
+   rb->buf = new_buf;
+   rb->cb = new_cb;
+   rb->rp = 0;
+   rb->wp = rcb;
+   rb->rcb = rcb;
+   rb->saved_wp = 0;
+   rb->saved_rcb = 0;
+}
+
 static size_t min(size_t a, size_t b) {
    if (a < b) {
       return a;

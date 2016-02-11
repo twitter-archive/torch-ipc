@@ -4,13 +4,12 @@
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
+#include <errno.h>
 #include "ringbuffer.h"
 #include "serialize.h"
 #include "error.h"
 
-#define DEFAULT_WORKQUEUE_SIZE (256*1024)
-
-static pthread_once_t workqueue_once = PTHREAD_ONCE_INIT;
+#define DEFAULT_WORKQUEUE_SIZE (16*1024)
 
 typedef struct queue_t {
    struct ringbuffer_t* rb;
@@ -35,6 +34,7 @@ typedef struct context_t {
    workqueue_t *workqueue;
 } context_t;
 
+static pthread_once_t workqueue_once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t workqueue_mutex;
 static workqueue_t *workqueue_head;
 
@@ -177,17 +177,21 @@ int workqueue_read(lua_State *L) {
 
 static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
    pthread_mutex_lock(&queue->mutex);
-   int ret = 0;
    while (1) {
       ringbuffer_push_write_pos(queue->rb);
-      ret = rb_save(L, index, queue->rb, 0);
-      if (ret) {
+      int ret = rb_save(L, index, queue->rb, 0);
+      if (ret == -ENOMEM) {
          ringbuffer_pop_write_pos(queue->rb);
          if (ringbuffer_peek(queue->rb)) {
             pthread_cond_wait(&queue->write_avail_cond, &queue->mutex);
          } else {
-            return LUA_HANDLE_ERROR_STR(L, "workqueue.write message is too big for the ring buffer.");
+            ringbuffer_grow_by(queue->rb, DEFAULT_WORKQUEUE_SIZE);
+            fprintf(stderr, "INFO: ipc.workqueue grew to %zu bytes\n", queue->rb->cb);
          }
+      } else if (ret) {
+         ringbuffer_pop_write_pos(queue->rb);
+         pthread_mutex_unlock(&queue->mutex);
+         return LUA_HANDLE_ERROR(L, -ret);
       } else {
          break;
       }
@@ -195,7 +199,7 @@ static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
    queue->num_items++;
    pthread_cond_signal(&queue->read_avail_cond);
    pthread_mutex_unlock(&queue->mutex);
-   return ret;
+   return 0;
 }
 
 int workqueue_write(lua_State *L) {
