@@ -1,8 +1,5 @@
-local paths = require 'paths'
-
-local root = paths.dirname(paths.thisfile())
-require(paths.concat(root, 'test_workqueue'))
-require(paths.concat(root, 'test_cliser'))
-require(paths.concat(root, 'test_map'))
-require(paths.concat(root, 'test_Tree'))
-require(paths.concat(root, 'test_spawn'))
+include('./test_workqueue.lua')
+include('./test_cliser.lua')
+include('./test_map.lua')
+include('./test_Tree.lua')
+include('./test_spawn.lua')
