@@ -1,5 +1,3 @@
-local paths = require 'paths'
-
 require 'test/test_workqueue'
 require 'test/test_cliser'
 require 'test/test_map'
