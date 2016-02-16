@@ -1,4 +1,5 @@
 local test = require 'regress'
+local torch = require 'torch'
 pcall(require, 'cutorch')
 local ipc = require 'libipc'
 

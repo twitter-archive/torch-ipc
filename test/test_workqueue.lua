@@ -1,4 +1,5 @@
 local test = require 'regress'
+local torch = require 'torch'
 local ipc = require 'libipc'
 
 local q = ipc.workqueue('test')
