@@ -314,8 +314,8 @@ int spawn_running(lua_State *L) {
 int spawn_gc(lua_State *L) {
    spawn_t **uspawn = lua_touserdata(L, 1);
    if (*uspawn) {
-      fprintf(stderr, "ipc.spawn being garbage collected before wait was called, sending KILL to child process");
-      int ret = kill((*uspawn)->pid, SIGKILL);
+      fprintf(stderr, "ipc.spawn being garbage collected before wait was called, sending SIGTERM to child process");
+      int ret = kill((*uspawn)->pid, SIGTERM);
       if (ret) return LUA_HANDLE_ERROR(L, errno);
       spawn_wait(L);
       lua_pop(L, 1);
