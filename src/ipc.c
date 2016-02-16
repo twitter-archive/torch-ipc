@@ -51,22 +51,6 @@ int ipc_waitpid(lua_State *L) {
    return 0;
 }
 
-int ipc_link(lua_State *L) {
-   const char *src = lua_tostring(L, 1);
-   const char *dst = lua_tostring(L, 2);
-   int ret = link(src, dst);
-   lua_pushinteger(L, ret < 0 ? errno : ret);
-   return 1;
-}
-
-int ipc_symlink(lua_State *L) {
-   const char *src = lua_tostring(L, 1);
-   const char *dst = lua_tostring(L, 2);
-   int ret = symlink(src, dst);
-   lua_pushinteger(L, ret < 0 ? errno : ret);
-   return 1;
-}
-
 static const struct luaL_reg ipc_routines[] = {
    {"workqueue", workqueue_open},
    {"server", cliser_server},
@@ -76,8 +60,6 @@ static const struct luaL_reg ipc_routines[] = {
    {"gettid", ipc_gettid},
    {"fork", ipc_fork},
    {"waitpid", ipc_waitpid},
-   {"link", ipc_link},
-   {"symlink", ipc_symlink},
    {"map", map_open},
    {"spawn", spawn_open},
    {NULL, NULL}
@@ -128,11 +110,11 @@ static const struct luaL_reg map_routines[] = {
 };
 
 static const struct luaL_reg spawn_routines[] = {
-   {"wait", spawn_wait},
-   {"close", spawn_close},
    {"stdin", spawn_stdin},
    {"stdout", spawn_stdout},
-   {"stderr", spawn_stderr},
+   {"wait", spawn_wait},
+   {"pid", spawn_pid},
+   {"running", spawn_running},
    {"__gc", spawn_gc},
    {NULL, NULL}
 };

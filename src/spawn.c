@@ -6,18 +6,19 @@
 #include <spawn.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#include <signal.h>
 #include "error.h"
 
 typedef struct spawn_t {
    pid_t pid;
-   int fd[3][2];
+   int fd[2][2];
    posix_spawn_file_actions_t file_actions;
    posix_spawnattr_t spawnattr;
-   int exit_status;
 } spawn_t;
 
 void spawn_destroy(spawn_t *spawn) {
-   for (int i = 0; i < 3; i++) {
+   for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 2; j++) {
          if (spawn->fd[i][j]) {
             close(spawn->fd[i][j]);
@@ -67,11 +68,6 @@ int spawn_open(lua_State *L) {
    }
    lua_pop(L, 1);
 
-   lua_pushstring(L, "stderr");
-   lua_gettable(L, 1);
-   int num_pipes = lua_toboolean(L, -1) ? 3 : 2;
-   lua_pop(L, 1);
-
    spawn_t *spawn = calloc(sizeof(spawn_t), 1);
 
    int ret = posix_spawn_file_actions_init(&spawn->file_actions);
@@ -79,24 +75,25 @@ int spawn_open(lua_State *L) {
       spawn_destroy(spawn);
       return LUA_HANDLE_ERROR(L, errno);
    }
-   for (int i = 0; i < num_pipes; i++) {
+
+   for (int i = 0; i < 2; i++) {
       ret = pipe(spawn->fd[i]);
       if (ret) {
          spawn_destroy(spawn);
          return LUA_HANDLE_ERROR(L, errno);
       }
       int rw = i == 0 ? 0 : 1;
-      ret = posix_spawn_file_actions_addclose(&spawn->file_actions, spawn->fd[i][!rw]);
-      if (ret) {
-         spawn_destroy(spawn);
-         return LUA_HANDLE_ERROR(L, errno);
-      }
       ret = posix_spawn_file_actions_adddup2(&spawn->file_actions, spawn->fd[i][rw], i);
       if (ret) {
          spawn_destroy(spawn);
          return LUA_HANDLE_ERROR(L, errno);
       }
       ret = posix_spawn_file_actions_addclose(&spawn->file_actions, spawn->fd[i][rw]);
+      if (ret) {
+         spawn_destroy(spawn);
+         return LUA_HANDLE_ERROR(L, errno);
+      }
+      ret = posix_spawn_file_actions_addclose(&spawn->file_actions, spawn->fd[i][!rw]);
       if (ret) {
          spawn_destroy(spawn);
          return LUA_HANDLE_ERROR(L, errno);
@@ -115,14 +112,18 @@ int spawn_open(lua_State *L) {
       return LUA_HANDLE_ERROR(L, errno);
    }
 
-   close(spawn->fd[0][0]);
-   spawn->fd[0][0] = 0;
-   close(spawn->fd[1][1]);
-   spawn->fd[1][1] = 0;
-   if (spawn->fd[2][1]) {
-      close(spawn->fd[2][1]);
-      spawn->fd[2][1] = 0;
+   ret = close(spawn->fd[0][0]);
+   if (ret) {
+      spawn_destroy(spawn);
+      return LUA_HANDLE_ERROR(L, errno);
    }
+   spawn->fd[0][0] = 0;
+   ret = close(spawn->fd[1][1]);
+   if (ret) {
+      spawn_destroy(spawn);
+      return LUA_HANDLE_ERROR(L, errno);
+   }
+   spawn->fd[1][1] = 0;
 
    spawn_t **uspawn = lua_newuserdata(L, sizeof(spawn_t *));
    *uspawn = spawn;
@@ -135,76 +136,189 @@ int spawn_wait(lua_State *L) {
    spawn_t **uspawn = lua_touserdata(L, 1);
    if (!*uspawn) return LUA_HANDLE_ERROR_STR(L, "spawn was already closed");
    spawn_t *spawn = *uspawn;
-   if (spawn->pid) {
-      close(spawn->fd[0][1]);
+   // optional signal to send to child process
+   const char *signame = lua_tostring(L, 2);
+   if (signame) {
+      int which;
+      if (strcmp(signame, "KILL") == 0) {
+         which = SIGKILL;
+      } else if (strcmp(signame, "TERM") == 0) {
+         which = SIGTERM;
+      } else {
+         return LUA_HANDLE_ERROR_STR(L, "unknown signal");
+      }
+      int ret = kill(spawn->pid, which);
+      if (ret) return LUA_HANDLE_ERROR(L, errno);
+   }
+   // close stdin
+   if (spawn->fd[0][1]) {
+      int ret = close(spawn->fd[0][1]);
+      if (ret) return LUA_HANDLE_ERROR(L, errno);
       spawn->fd[0][1] = 0;
-      int status;
-      if (-1 == waitpid(spawn->pid, &status, 0)) return LUA_HANDLE_ERROR(L, errno);
-      spawn->pid = 0;
-      spawn->exit_status = WEXITSTATUS(status);
    }
-   lua_pushnumber(L, spawn->exit_status);
-   return 1;
-}
-
-static int close_file(lua_State *L) {
-   FILE **file = lua_touserdata(L, 1);
-   if (*file) {
-      fclose(*file);
-      *file = NULL;
+   // read whatever is left on stdout, we dont want the process to be stalled on us
+   char buff[1024];
+   while (1) {
+      ssize_t x = read((*uspawn)->fd[1][0], buff, 1024);
+      if (x < 0) {
+         return LUA_HANDLE_ERROR(L, errno);
+      } else if (x == 0) {
+         break;
+      }
    }
-   return 0;
-}
-
-static int new_file(lua_State *L, int fd, const char *mode) {
-   FILE **file = lua_newuserdata(L, sizeof(FILE**));
-   *file = NULL;
-   luaL_getmetatable(L, LUA_FILEHANDLE);
-   lua_setmetatable(L, -2);
-
-   lua_newtable(L);
-   lua_pushstring(L, "__close");
-   lua_pushcfunction(L, close_file);
-   lua_settable(L, -3);
-   lua_setfenv(L, -2);
-
-   *file = fdopen(fd, mode);
-   if (!*file) return LUA_HANDLE_ERROR(L, errno);
+   // wait for exit
+   int status;
+   do {
+      int ret = waitpid(spawn->pid, &status, WUNTRACED | WCONTINUED);
+      if (ret < 0) return LUA_HANDLE_ERROR(L, errno);
+   } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+   // clean up
+   spawn_destroy(spawn);
+   *uspawn = NULL;
+   // return the exit code
+   lua_pushnumber(L, WEXITSTATUS(status));
    return 1;
 }
 
 int spawn_stdin(lua_State *L) {
    spawn_t **uspawn = lua_touserdata(L, 1);
    if (!*uspawn) return LUA_HANDLE_ERROR_STR(L, "spawn was already closed");
-   return new_file(L, (*uspawn)->fd[0][1], "a");
+   if (lua_gettop(L) == 1) {
+      // close stdin
+      int ret = close((*uspawn)->fd[0][1]);
+      if (ret) return LUA_HANDLE_ERROR(L, errno);
+      (*uspawn)->fd[0][1] = 0;
+      return 0;
+   }
+   // write to stdin
+   size_t str_len;
+   const char *str = lua_tolstring(L, 2, &str_len);
+   size_t cb = 0;
+   while (cb < str_len) {
+      ssize_t x = write((*uspawn)->fd[0][1], str + cb, str_len - cb);
+      if (x < 0) {
+         return LUA_HANDLE_ERROR(L, errno);
+      } else {
+         cb += x;
+      }
+   }
+   return 0;
 }
 
 int spawn_stdout(lua_State *L) {
    spawn_t **uspawn = lua_touserdata(L, 1);
    if (!*uspawn) return LUA_HANDLE_ERROR_STR(L, "spawn was already closed");
-   return new_file(L, (*uspawn)->fd[1][0], "r");
+   int type = lua_type(L, 2);
+   if (type == LUA_TNUMBER) {
+      // read some number of bytes from stdout
+      size_t cb = lua_tonumber(L, 2);
+      char *buff = calloc(cb + 1, 1);
+      ssize_t n = read((*uspawn)->fd[1][0], buff, cb);
+      if (n < 0) {
+         free(buff);
+         return LUA_HANDLE_ERROR(L, errno);
+      }
+      if (n > 0) {
+         lua_pushlstring(L, buff, n);
+         free(buff);
+         return 1;
+      } else {
+         free(buff);
+         return 0;
+      }
+   }
+   const char *arg = luaL_optstring(L, 2, "*l");
+   if (strncmp(arg, "*l", 2) == 0) {
+      // read stdout until EOL
+      size_t cb = 0;
+      size_t max_cb = 1024;
+      char *buff = realloc(NULL, max_cb);
+      while (1) {
+         ssize_t x = read((*uspawn)->fd[1][0], buff + cb, 1);
+         if (x < 0) {
+            free(buff);
+            return LUA_HANDLE_ERROR(L, errno);
+         } else if (x == 0) {
+            if (cb > 0) {
+               buff[cb] = 0;
+               lua_pushlstring(L, buff, cb);
+               free(buff);
+               return 1;
+            } else {
+               free(buff);
+               return 0;
+            }
+         } else {
+            if (buff[cb] == '\n') {
+               buff[cb] = 0;
+               lua_pushlstring(L, buff, cb);
+               free(buff);
+               return 1;
+            }
+            cb++;
+            if (cb + 1 == max_cb) {
+               max_cb += 1024;
+               buff = realloc(buff, max_cb);
+            }
+         }
+      }
+   } else {
+      // read stdout until EOF
+      size_t cb = 0;
+      size_t max_cb = 1024;
+      char *buff = realloc(NULL, max_cb);
+      while (1) {
+         ssize_t x = read((*uspawn)->fd[1][0], buff + cb, max_cb - cb - 1);
+         if (x < 0) {
+            free(buff);
+            return LUA_HANDLE_ERROR(L, errno);
+         } else if (x == 0) {
+            if (cb > 0) {
+               buff[cb] = 0;
+               lua_pushlstring(L, buff, cb);
+               free(buff);
+               return 1;
+            } else {
+               free(buff);
+               return 0;
+            }
+         } else {
+            cb += x;
+            if (cb + 1 == max_cb) {
+               max_cb += 1024;
+               buff = realloc(buff, max_cb);
+            }
+         }
+      }
+   }
 }
 
-int spawn_stderr(lua_State *L) {
+int spawn_pid(lua_State *L) {
    spawn_t **uspawn = lua_touserdata(L, 1);
    if (!*uspawn) return LUA_HANDLE_ERROR_STR(L, "spawn was already closed");
-   return new_file(L, (*uspawn)->fd[2][0], "r");
+   lua_pushnumber(L, (*uspawn)->pid);
+   return 1;
 }
 
-int spawn_close(lua_State *L) {
-   spawn_wait(L);
+int spawn_running(lua_State *L) {
    spawn_t **uspawn = lua_touserdata(L, 1);
-   spawn_destroy(*uspawn);
-   *uspawn = NULL;
+   if (!*uspawn) return LUA_HANDLE_ERROR_STR(L, "spawn was already closed");
+   siginfo_t si;
+   memset(&si, 0, sizeof(si));
+   int ret = waitid(P_PID, (*uspawn)->pid, &si, WEXITED | WNOHANG | WNOWAIT);
+   if (ret) return LUA_HANDLE_ERROR(L, errno);
+   lua_pushboolean(L, si.si_pid == 0);
    return 1;
 }
 
 int spawn_gc(lua_State *L) {
    spawn_t **uspawn = lua_touserdata(L, 1);
    if (*uspawn) {
+      fprintf(stderr, "ipc.spawn being garbage collected before wait was called, sending KILL to child process");
+      int ret = kill((*uspawn)->pid, SIGKILL);
+      if (ret) return LUA_HANDLE_ERROR(L, errno);
       spawn_wait(L);
       lua_pop(L, 1);
-      spawn_destroy(*uspawn);
    }
    return 0;
 }

@@ -2,15 +2,18 @@
 #define _ERROR_H_
 
 #include "luaT.h"
+#include <string.h>
 
-int _ipc_log_error(int ret, const char* file, int line);
-int _ipc_lua_error(lua_State *L, int ret, const char* file, int line);
-int _ipc_lua_error_str(lua_State *L, const char *str, const char* file, int line);
+static inline int _lua_error(lua_State *L, int ret, const char* file, int line) {
+   int pos_ret = ret >= 0 ? ret : -ret;
+   return luaL_error(L, "ERROR: (%s, %d): (%d, %s)\n", file, line, pos_ret, strerror(pos_ret));
+}
 
-#define HANDLE_ERROR(ret) _ipc_log_error(ret, __FILE__, __LINE__)
-#define LUA_HANDLE_ERROR(L, ret) _ipc_lua_error(L, ret, __FILE__, __LINE__)
-#define LUA_HANDLE_ERROR_STR(L, str) _ipc_lua_error_str(L, str, __FILE__, __LINE__)
+static inline int _lua_error_str(lua_State *L, const char *str, const char* file, int line) {
+   return luaL_error(L, "ERROR: (%s, %d): (%s)\n", file, line, str);
+}
 
-double _ipc_seconds();
+#define LUA_HANDLE_ERROR(L, ret) _lua_error(L, ret, __FILE__, __LINE__)
+#define LUA_HANDLE_ERROR_STR(L, str) _lua_error_str(L, str, __FILE__, __LINE__)
 
 #endif

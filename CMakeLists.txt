@@ -21,7 +21,6 @@ SET(src
    src/serialize.c
    src/cliser.c
    src/map.c
-   src/error.c
    src/spawn.c
 )
 SET(luasrc
