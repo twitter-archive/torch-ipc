@@ -1,5 +1,6 @@
-include('./test_workqueue.lua')
-include('./test_cliser.lua')
-include('./test_map.lua')
-include('./test_Tree.lua')
-include('./test_spawn.lua')
+local paths = require 'paths'
+
+require 'test/test_workqueue'
+require 'test/test_cliser'
+require 'test/test_map'
+require 'test/test_Tree'
