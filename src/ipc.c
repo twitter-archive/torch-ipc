@@ -125,33 +125,32 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, workqueue_routines, 0);
+   luaT_setfuncs(L, workqueue_routines, 0);
    luaL_newmetatable(L, "ipc.server");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, server_routines, 0);
+   luaT_setfuncs(L, server_routines, 0);
    luaL_newmetatable(L, "ipc.server.client");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, server_client_routines, 0);
+   luaT_setfuncs(L, server_client_routines, 0);
    luaL_newmetatable(L, "ipc.client");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, client_routines, 0);
+   luaT_setfuncs(L, client_routines, 0);
    luaL_newmetatable(L, "ipc.map");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, map_routines, 0);
+   luaT_setfuncs(L, map_routines, 0);
    luaL_newmetatable(L, "ipc.spawn");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, spawn_routines, 0);
-   luaL_openlib(L, "libipc", ipc_routines, 0);
+   luaT_setfuncs(L, spawn_routines, 0);
    Lcliser_CharInit(L);
    Lcliser_ByteInit(L);
    Lcliser_ShortInit(L);
@@ -162,5 +161,7 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
 #ifdef USE_CUDA
    Lcliser_CudaInit(L);
 #endif
+   lua_newtable(L);
+   luaT_setfuncs(L, ipc_routines, 0);
    return 1;
 }
