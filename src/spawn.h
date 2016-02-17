@@ -5,10 +5,10 @@
 
 int spawn_open(lua_State *L);
 int spawn_wait(lua_State *L);
-int spawn_close(lua_State *L);
-int spawn_gc(lua_State *L);
 int spawn_stdin(lua_State *L);
 int spawn_stdout(lua_State *L);
-int spawn_stderr(lua_State *L);
+int spawn_pid(lua_State *L);
+int spawn_running(lua_State *L);
+int spawn_gc(lua_State *L);
 
 #endif

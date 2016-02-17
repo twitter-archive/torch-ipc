@@ -85,7 +85,7 @@ local q = ipc.workqueue('my queue')
 
 -- Create 2 background workers that read from the named workqueue
 local workers = ipc.map(2, function()
-   -- This function is not a closure, its a totally clean Lua environment
+   -- This function is not a closure, it is a totally clean Lua environment
    local ipc = require 'libipc'
    -- Open the queue by name (the main thread already created it)
    local q = ipc.workqueue('my queue')

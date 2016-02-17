@@ -80,6 +80,12 @@ typedef struct server_client_t {
    client_t *client;
 } server_client_t;
 
+static double cliser_profile_seconds() {
+   struct timeval tv;
+   gettimeofday(&tv, NULL);
+   return tv.tv_sec + tv.tv_usec / 1e6;
+}
+
 static void insert_client(server_t *server, client_t *client) {
    if (server->clients) {
       server->clients->prev = client;
@@ -470,9 +476,9 @@ int cliser_server_client_close(lua_State *L) {
 }
 
 static int sock_send(int sock, void *ptr, size_t len, copy_context_t *copy_context) {
-   double t0 = _ipc_seconds();
+   double t0 = cliser_profile_seconds();
    int ret = send(sock, ptr, len, 0);
-   copy_context->tx.system_seconds += (_ipc_seconds() - t0);
+   copy_context->tx.system_seconds += (cliser_profile_seconds() - t0);
    copy_context->tx.num_bytes += len;
    copy_context->tx.num_system_calls++;
    return ret;
@@ -481,9 +487,9 @@ static int sock_send(int sock, void *ptr, size_t len, copy_context_t *copy_conte
 static int sock_recv(int sock, void *ptr, size_t len, copy_context_t *copy_context) {
    int rem = len;
    while (rem > 0) {
-      double t0 = _ipc_seconds();
+      double t0 = cliser_profile_seconds();
       int ret = recv(sock, ptr, rem, 0);
-      copy_context->rx.system_seconds += (_ipc_seconds() - t0);
+      copy_context->rx.system_seconds += (cliser_profile_seconds() - t0);
       copy_context->rx.num_system_calls++;
       if (ret <= 0) return ret;
       rem -= ret;
@@ -590,7 +596,7 @@ static int sock_recv_userdata(lua_State *L, int index, int sock, copy_context_t 
 }
 
 int cliser_server_send(lua_State *L) {
-   double t0 = _ipc_seconds();
+   double t0 = cliser_profile_seconds();
    server_client_t *server_client = (server_client_t *)lua_touserdata(L, 1);
    if (server_client->client == NULL) return LUA_HANDLE_ERROR_STR(L, "server client is invalid, either closed or used outside of server function scope");
    int ret;
@@ -600,13 +606,13 @@ int cliser_server_send(lua_State *L) {
    } else {
       ret = sock_send_msg(L, 2, server_client->client->sock, server_client->client->send_rb, &server_client->server->copy_context);
    }
-   server_client->server->copy_context.tx.total_seconds += (_ipc_seconds() - t0);
+   server_client->server->copy_context.tx.total_seconds += (cliser_profile_seconds() - t0);
    server_client->server->copy_context.tx.num_calls++;
    return ret;
 }
 
 int cliser_server_recv(lua_State *L) {
-   double t0 = _ipc_seconds();
+   double t0 = cliser_profile_seconds();
    server_client_t *server_client = (server_client_t *)lua_touserdata(L, 1);
    if (server_client->client == NULL) return LUA_HANDLE_ERROR_STR(L, "server client is invalid, either closed or used outside of server function scope");
    int ret;
@@ -620,13 +626,13 @@ int cliser_server_recv(lua_State *L) {
    } else {
       ret = sock_recv_msg(L, server_client->client->sock, server_client->client->recv_rb, &server_client->server->copy_context);
    }
-   server_client->server->copy_context.rx.total_seconds += (_ipc_seconds() - t0);
+   server_client->server->copy_context.rx.total_seconds += (cliser_profile_seconds() - t0);
    server_client->server->copy_context.rx.num_calls++;
    return ret;
 }
 
 int cliser_server_broadcast(lua_State *L) {
-   double t0 = _ipc_seconds();
+   double t0 = cliser_profile_seconds();
    server_t *server = (server_t *)lua_touserdata(L, 1);
    const char *tag = luaL_optstring(L, 3, NULL);
    client_t **clients = alloca(server->num_clients * sizeof(client_t*));
@@ -650,13 +656,13 @@ int cliser_server_broadcast(lua_State *L) {
       }
       if (ret) break;
    }
-   server->copy_context.tx.total_seconds += (_ipc_seconds() - t0);
+   server->copy_context.tx.total_seconds += (cliser_profile_seconds() - t0);
    server->copy_context.tx.num_calls++;
    return ret;
 }
 
 int cliser_server_recv_any(lua_State *L) {
-   double t0 = _ipc_seconds();
+   double t0 = cliser_profile_seconds();
    server_t *server = (server_t *)lua_touserdata(L, 1);
    const char *tag = luaL_optstring(L, 2, NULL);
    fd_set fds;
@@ -692,13 +698,13 @@ int cliser_server_recv_any(lua_State *L) {
       }
       client = client->next;
    }
-   server->copy_context.rx.total_seconds += (_ipc_seconds() - t0);
+   server->copy_context.rx.total_seconds += (cliser_profile_seconds() - t0);
    server->copy_context.rx.num_calls++;
    return ret;
 }
 
 int cliser_client_send(lua_State *L) {
-   double t0 = _ipc_seconds();
+   double t0 = cliser_profile_seconds();
    client_t *client = *(client_t **)lua_touserdata(L, 1);
    int ret;
    if (lua_type(L, 2) == LUA_TUSERDATA) {
@@ -706,13 +712,13 @@ int cliser_client_send(lua_State *L) {
    } else {
       ret = sock_send_msg(L, 2, client->sock, client->send_rb, &client->copy_context);
    }
-   client->copy_context.tx.total_seconds += (_ipc_seconds() - t0);
+   client->copy_context.tx.total_seconds += (cliser_profile_seconds() - t0);
    client->copy_context.tx.num_calls++;
    return ret;
 }
 
 int cliser_client_recv(lua_State *L) {
-   double t0 = _ipc_seconds();
+   double t0 = cliser_profile_seconds();
    client_t *client = *(client_t **)lua_touserdata(L, 1);
    int ret;
    if (lua_type(L, 2) == LUA_TUSERDATA) {
@@ -724,19 +730,19 @@ int cliser_client_recv(lua_State *L) {
    } else {
       ret = sock_recv_msg(L, client->sock, client->recv_rb, &client->copy_context);
    }
-   client->copy_context.rx.total_seconds += (_ipc_seconds() - t0);
+   client->copy_context.rx.total_seconds += (cliser_profile_seconds() - t0);
    client->copy_context.rx.num_calls++;
    return ret;
 }
 
 int cliser_client_recv_async(lua_State *L) {
-   double t0 = _ipc_seconds();
+   double t0 = cliser_profile_seconds();
    client_t *client = *(client_t **)lua_touserdata(L, 1);
    int ret = sock_recv_msg_peek(L, client->sock, client->recv_rb);
    if (ret > 0) {
       ret = sock_recv_msg(L, client->sock, client->recv_rb, &client->copy_context);
    }
-   client->copy_context.rx.total_seconds += (_ipc_seconds() - t0);
+   client->copy_context.rx.total_seconds += (cliser_profile_seconds() - t0);
    client->copy_context.rx.num_calls++;
    return ret;
 }
@@ -764,7 +770,7 @@ int cliser_net_stats_inner(lua_State *L, net_stats_t *net_stats) {
    lua_pushstring(L, "cuda_sync_seconds");
    lua_pushnumber(L, net_stats->cuda_sync_seconds);
    lua_settable(L, -3);
-   lua_pushstring(L, "cuda_ipc_seconds");
+   lua_pushstring(L, "cudacliser_profile_seconds");
    lua_pushnumber(L, net_stats->cuda_ipc_seconds);
    lua_settable(L, -3);
    lua_pushstring(L, "cuda_ipc_bytes");

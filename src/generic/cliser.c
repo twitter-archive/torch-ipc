@@ -54,7 +54,7 @@ static void Lcliser_(init_copy_context)(copy_context_t *copy_context) {
 static int Lcliser_(write_contiguous)(lua_State *L, int sock, real *ptr, size_t count, copy_context_t *copy_context) {
    Lcliser_(init_copy_context)(copy_context);
    if (copy_context->use_fastpath) {
-      double t0 = _ipc_seconds();
+      double t0 = cliser_profile_seconds();
       remote_ptr_t remote_ptr;
       remote_ptr.ptr = ptr;
       remote_ptr.count = count;
@@ -65,16 +65,16 @@ static int Lcliser_(write_contiguous)(lua_State *L, int sock, real *ptr, size_t 
       int not_used;
       ret = sock_recv_raw(L, sock, &not_used, sizeof(not_used), copy_context);
       if (ret) return ret;
-      copy_context->tx.cuda_ipc_seconds += (_ipc_seconds() - t0);
+      copy_context->tx.cuda_ipc_seconds += (cliser_profile_seconds() - t0);
       copy_context->tx.cuda_ipc_bytes += count * ELEMENT_SIZE;
    } else {
       int which = 0;
       size_t last_cb = 0;
       while (count > 0) {
          if (last_cb) {
-            double t0 = _ipc_seconds();
+            double t0 = cliser_profile_seconds();
             THCudaCheck(cudaEventSynchronize(copy_context->event));
-            copy_context->tx.cuda_sync_seconds += (_ipc_seconds() - t0);
+            copy_context->tx.cuda_sync_seconds += (cliser_profile_seconds() - t0);
          }
          size_t cb = (count > CUDA_BLOCK_COUNT) ? CUDA_BLOCK_COUNT : count;
          THCudaCheck(cudaMemcpyAsync(copy_context->buf[which], ptr, cb * ELEMENT_SIZE, cudaMemcpyDeviceToHost, 0));
@@ -89,9 +89,9 @@ static int Lcliser_(write_contiguous)(lua_State *L, int sock, real *ptr, size_t 
          last_cb = cb;
       }
       if (last_cb) {
-         double t0 = _ipc_seconds();
+         double t0 = cliser_profile_seconds();
          THCudaCheck(cudaEventSynchronize(copy_context->event));
-         copy_context->tx.cuda_sync_seconds += (_ipc_seconds() - t0);
+         copy_context->tx.cuda_sync_seconds += (cliser_profile_seconds() - t0);
          return sock_send_raw(L, sock, copy_context->buf[which ^ 1], last_cb * ELEMENT_SIZE, copy_context);
       }
    }
@@ -111,7 +111,7 @@ static int Lcliser_(has_overlap)(real *p0, size_t c0, real *p1, size_t c1) {
 static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t count, copy_context_t *copy_context) {
    Lcliser_(init_copy_context)(copy_context);
    if (copy_context->use_fastpath) {
-      double t0 = _ipc_seconds();
+      double t0 = cliser_profile_seconds();
       remote_ptr_t remote_ptr;
       int ret = sock_recv_raw(L, sock, &remote_ptr, sizeof(remote_ptr_t), copy_context);
       if (ret) return ret;
@@ -150,7 +150,7 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
       int not_used = 1;
       ret = sock_send_raw(L, sock, &not_used, sizeof(not_used), copy_context);
       if (ret) return ret;
-      copy_context->rx.cuda_ipc_seconds += (_ipc_seconds() - t0);
+      copy_context->rx.cuda_ipc_seconds += (cliser_profile_seconds() - t0);
       copy_context->rx.cuda_ipc_bytes += count * ELEMENT_SIZE;
    } else {
       int which = 0;
@@ -160,9 +160,9 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
       }
       while (count > 0) {
          if (last_cb) {
-            double t0 = _ipc_seconds();
+            double t0 = cliser_profile_seconds();
             THCudaCheck(cudaEventSynchronize(copy_context->event));
-            copy_context->rx.cuda_sync_seconds += (_ipc_seconds() - t0);
+            copy_context->rx.cuda_sync_seconds += (cliser_profile_seconds() - t0);
             THCudaCheck(cudaMemcpyAsync(ptr, copy_context->buf[which ^ 1], last_cb * ELEMENT_SIZE, cudaMemcpyHostToDevice, 0));
             THCudaCheck(cudaEventRecord(copy_context->event, 0));
             ptr += last_cb;
@@ -175,9 +175,9 @@ static int Lcliser_(read_contiguous)(lua_State *L, int sock, real *ptr, size_t c
          last_cb = cb;
       }
       if (last_cb) {
-         double t0 = _ipc_seconds();
+         double t0 = cliser_profile_seconds();
          THCudaCheck(cudaEventSynchronize(copy_context->event));
-         copy_context->rx.cuda_sync_seconds += (_ipc_seconds() - t0);
+         copy_context->rx.cuda_sync_seconds += (cliser_profile_seconds() - t0);
          THCudaCheck(cudaMemcpy(ptr, copy_context->buf[which ^ 1], last_cb * ELEMENT_SIZE, cudaMemcpyHostToDevice));
       }
    }

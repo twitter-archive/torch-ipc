@@ -2,7 +2,7 @@ local test = require 'regress'
 local ipc = require 'libipc'
 
 test {
-   testStdout = function()
+   testStdoutAll = function()
       local p = ipc.spawn({
          file = 'echo',
          args = {
@@ -11,39 +11,54 @@ test {
             'dawg',
          },
       })
-      local line = p:stdout():read('*all')
-      assert(line == 'what up dawg\n')
+      assert(p:stdout('*all') == 'what up dawg\n')
+      assert(p:stdout('*all') == nil)
       assert(p:wait() == 0)
-      p:close()
    end,
 
-   testStderr = function()
+   testStdoutLine = function()
       local p = ipc.spawn({
-         file = 'bash',
+         file = 'echo',
          args = {
-            '-c',
-            'echo hi 1>&2',
+            'what',
+            'up',
+            'dawg',
          },
-         stderr = true,
       })
-      local line = p:stderr():read('*all')
-      assert(line == 'hi\n')
+      assert(p:stdout('*line') == 'what up dawg')
+      assert(p:stdout('*line') == nil)
       assert(p:wait() == 0)
-      p:close()
+   end,
+
+   testStdoutNumber = function()
+      local p = ipc.spawn({
+         file = 'echo',
+         args = {
+            'what',
+            'up',
+            'dawg',
+         },
+      })
+      assert(p:stdout(256) == 'what up dawg\n')
+      assert(p:stdout(256) == nil)
+      assert(p:wait() == 0)
    end,
 
    testStdin = function()
       local p = ipc.spawn({
          file = 'tee',
       })
-      local stdin = p:stdin()
-      stdin:write('yoyo\n')
-      stdin:close()
-      local line = p:stdout():read('*all')
-      assert(line == 'yoyo\n')
+      p:stdin('a\n')
+      p:stdin('b\n')
+      p:stdin('c\n')
+      p:stdin('d')
+      p:stdin()
+      assert(p:stdout('*line') == 'a')
+      assert(p:stdout('*line') == 'b')
+      assert(p:stdout('*line') == 'c')
+      assert(p:stdout('*line') == 'd')
+      assert(p:stdout() == nil)
       assert(p:wait() == 0)
-      p:close()
-      collectgarbage()
    end,
 
    testEnv = function()
@@ -56,9 +71,86 @@ test {
             'SOME_VAR=42',
          },
       })
-      local line = p:stdout():read('*all')
-      assert(line == '42\n')
+      assert(p:stdout('*all') == '42\n')
       assert(p:wait() == 0)
-      p:close()
+   end,
+
+   testSignalKill = function()
+      local p = ipc.spawn({
+         file = 'sleep',
+         args = {
+            100,
+         }
+      })
+      assert(p:wait("KILL") == 0)
+   end,
+
+   testSignalTerm = function()
+      local p = ipc.spawn({
+         file = 'sleep',
+         args = {
+            100,
+         }
+      })
+      assert(p:wait("TERM") == 0)
+   end,
+
+   testExitCode = function()
+      local p = ipc.spawn({
+         file = 'bash',
+         args = {
+            '-c',
+            'ls /this/will/never/exist/so/crazy 2> /dev/null',
+         }
+      })
+      assert(p:wait() ~= 0)
+   end,
+
+   testRunning = function()
+      local p = ipc.spawn({
+         file = 'sleep',
+         args = {
+            1,
+         },
+      })
+      local i = 0
+      while p:running() do
+         i = i + 1
+         sys.sleep(0.2)
+      end
+      assert(i > 3 and i < 7)    -- fuzzy
+      assert(p:wait() == 0)
+   end,
+
+   testCollectGarbage = function()
+      ipc.spawn({
+         file = 'echo',
+         args = {
+            'good',
+         },
+      }):wait()
+      collectgarbage()
+      ipc.spawn({
+         file = 'echo',
+         args = {
+            'bad',
+         },
+      })
+      collectgarbage()
+   end,
+
+   testErrors = function()
+      local ok = pcall(function()
+         local p = ipc.spawn({
+            file = 'sleep',
+            args = {
+               100,
+            },
+         })
+         error("die before waiting")
+         p:wait()
+      end)
+      assert(ok == false)
+      collectgarbage()
    end,
 }

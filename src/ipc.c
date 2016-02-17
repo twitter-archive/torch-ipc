@@ -51,23 +51,7 @@ int ipc_waitpid(lua_State *L) {
    return 0;
 }
 
-int ipc_link(lua_State *L) {
-   const char *src = lua_tostring(L, 1);
-   const char *dst = lua_tostring(L, 2);
-   int ret = link(src, dst);
-   lua_pushinteger(L, ret < 0 ? errno : ret);
-   return 1;
-}
-
-int ipc_symlink(lua_State *L) {
-   const char *src = lua_tostring(L, 1);
-   const char *dst = lua_tostring(L, 2);
-   int ret = symlink(src, dst);
-   lua_pushinteger(L, ret < 0 ? errno : ret);
-   return 1;
-}
-
-static const struct luaL_reg ipc_routines[] = {
+static const struct luaL_Reg ipc_routines[] = {
    {"workqueue", workqueue_open},
    {"server", cliser_server},
    {"client", cliser_client},
@@ -76,14 +60,12 @@ static const struct luaL_reg ipc_routines[] = {
    {"gettid", ipc_gettid},
    {"fork", ipc_fork},
    {"waitpid", ipc_waitpid},
-   {"link", ipc_link},
-   {"symlink", ipc_symlink},
    {"map", map_open},
    {"spawn", spawn_open},
    {NULL, NULL}
 };
 
-static const struct luaL_reg workqueue_routines[] = {
+static const struct luaL_Reg workqueue_routines[] = {
    {"close", workqueue_close},
    {"read", workqueue_read},
    {"write", workqueue_write},
@@ -91,7 +73,7 @@ static const struct luaL_reg workqueue_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg server_routines[] = {
+static const struct luaL_Reg server_routines[] = {
    {"close", cliser_server_close},
    {"clients", cliser_server_clients},
    {"broadcast", cliser_server_broadcast},
@@ -100,7 +82,7 @@ static const struct luaL_reg server_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg server_client_routines[] = {
+static const struct luaL_Reg server_client_routines[] = {
    {"send", cliser_server_send},
    {"recv", cliser_server_recv},
    {"tag", cliser_server_tag},
@@ -109,7 +91,7 @@ static const struct luaL_reg server_client_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg client_routines[] = {
+static const struct luaL_Reg client_routines[] = {
    {"close", cliser_client_close},
    {"__gc", cliser_client_close},
    {"send", cliser_client_send},
@@ -121,18 +103,18 @@ static const struct luaL_reg client_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg map_routines[] = {
+static const struct luaL_Reg map_routines[] = {
    {"join", map_join},
    {"checkErrors", map_check_errors},
    {NULL, NULL}
 };
 
-static const struct luaL_reg spawn_routines[] = {
-   {"wait", spawn_wait},
-   {"close", spawn_close},
+static const struct luaL_Reg spawn_routines[] = {
    {"stdin", spawn_stdin},
    {"stdout", spawn_stdout},
-   {"stderr", spawn_stderr},
+   {"wait", spawn_wait},
+   {"pid", spawn_pid},
+   {"running", spawn_running},
    {"__gc", spawn_gc},
    {NULL, NULL}
 };
@@ -143,33 +125,32 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, workqueue_routines, 0);
+   luaT_setfuncs(L, workqueue_routines, 0);
    luaL_newmetatable(L, "ipc.server");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, server_routines, 0);
+   luaT_setfuncs(L, server_routines, 0);
    luaL_newmetatable(L, "ipc.server.client");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, server_client_routines, 0);
+   luaT_setfuncs(L, server_client_routines, 0);
    luaL_newmetatable(L, "ipc.client");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, client_routines, 0);
+   luaT_setfuncs(L, client_routines, 0);
    luaL_newmetatable(L, "ipc.map");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, map_routines, 0);
+   luaT_setfuncs(L, map_routines, 0);
    luaL_newmetatable(L, "ipc.spawn");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
-   luaL_openlib(L, NULL, spawn_routines, 0);
-   luaL_openlib(L, "libipc", ipc_routines, 0);
+   luaT_setfuncs(L, spawn_routines, 0);
    Lcliser_CharInit(L);
    Lcliser_ByteInit(L);
    Lcliser_ShortInit(L);
@@ -180,5 +161,7 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
 #ifdef USE_CUDA
    Lcliser_CudaInit(L);
 #endif
+   lua_newtable(L);
+   luaT_setfuncs(L, ipc_routines, 0);
    return 1;
 }
