@@ -184,7 +184,11 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
       case LUA_TFUNCTION:
          chunked.rb = rb;
          chunked.read_last = 0;
+#if !defined(LUA_VERSION_NUM) || LUA_VERSION_NUM < 502
          ret = lua_load(L, rb_lua_reader, &chunked, NULL);
+#else
+         ret = lua_load(L, rb_lua_reader, &chunked, NULL, NULL);
+#endif
          if (ret) return -EINVAL;
          // LuaJIT reads the last 0 marker, regular Lua does not, even it out.
          if (!chunked.read_last) {
