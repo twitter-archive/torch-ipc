@@ -42,6 +42,7 @@ end
 
 if opt.server > 0 then
    local server = ipc.server(opt.host, opt.port)
+   local unpack = unpack or table.unpack
    local t0 = torch.randn(unpack(dimensions)):float()
    if opt.cuda then
       t0 = t0:cuda()
@@ -80,6 +81,7 @@ if opt.server > 0 then
    server:close()
 else
    local client = ipc.client(opt.host, opt.port)
+   local unpack = unpack or table.unpack
    local t0 = torch.randn(unpack(dimensions)):float()
    if opt.cuda then
       t0 = t0:cuda()

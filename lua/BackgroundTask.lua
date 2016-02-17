@@ -9,6 +9,7 @@ local function BackgroundTask(func, ...)
       local ipc = require 'libipc'
       local q = ipc.workqueue(name)
       local task = q:read()
+      local unpack = unpack or table.unpack
       q:write({task.func(unpack(task.args))})
    end, name)
    q:write({ func = func, args = args })
@@ -30,6 +31,7 @@ local function BackgroundTask(func, ...)
          if not results then
             results = q:read()
          end
+         local unpack = unpack or table.unpack
          return unpack(results)
       end
    end

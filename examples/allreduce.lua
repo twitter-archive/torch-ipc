@@ -31,6 +31,7 @@ local dimensions = string.split(opt.dimensions, ",")
 for i = 1,#dimensions do
    dimensions[i] = tonumber(dimensions[i])
 end
+local unpack = unpack or table.unpack
 local t0 = torch.randn(unpack(dimensions)):float()
 if opt.cuda then
    t0 = t0:cuda()
