@@ -51,7 +51,7 @@ int ipc_waitpid(lua_State *L) {
    return 0;
 }
 
-static const struct luaL_reg ipc_routines[] = {
+static const struct luaL_Reg ipc_routines[] = {
    {"workqueue", workqueue_open},
    {"server", cliser_server},
    {"client", cliser_client},
@@ -65,7 +65,7 @@ static const struct luaL_reg ipc_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg workqueue_routines[] = {
+static const struct luaL_Reg workqueue_routines[] = {
    {"close", workqueue_close},
    {"read", workqueue_read},
    {"write", workqueue_write},
@@ -73,7 +73,7 @@ static const struct luaL_reg workqueue_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg server_routines[] = {
+static const struct luaL_Reg server_routines[] = {
    {"close", cliser_server_close},
    {"clients", cliser_server_clients},
    {"broadcast", cliser_server_broadcast},
@@ -82,7 +82,7 @@ static const struct luaL_reg server_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg server_client_routines[] = {
+static const struct luaL_Reg server_client_routines[] = {
    {"send", cliser_server_send},
    {"recv", cliser_server_recv},
    {"tag", cliser_server_tag},
@@ -91,7 +91,7 @@ static const struct luaL_reg server_client_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg client_routines[] = {
+static const struct luaL_Reg client_routines[] = {
    {"close", cliser_client_close},
    {"__gc", cliser_client_close},
    {"send", cliser_client_send},
@@ -103,13 +103,13 @@ static const struct luaL_reg client_routines[] = {
    {NULL, NULL}
 };
 
-static const struct luaL_reg map_routines[] = {
+static const struct luaL_Reg map_routines[] = {
    {"join", map_join},
    {"checkErrors", map_check_errors},
    {NULL, NULL}
 };
 
-static const struct luaL_reg spawn_routines[] = {
+static const struct luaL_Reg spawn_routines[] = {
    {"stdin", spawn_stdin},
    {"stdout", spawn_stdout},
    {"wait", spawn_wait},
