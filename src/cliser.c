@@ -232,7 +232,15 @@ static int can_use_fastpath(lua_State *L, int sock, uint32_t bind_addr, uint32_t
 #if defined(USE_CUDA) && !defined(__APPLE__)
    if (bind_addr == addr) {
       int device;
-      THCudaCheck(cudaGetDevice(&device));
+      cudaError_t err = cudaGetDevice(&device);
+      if (err != cudaSuccess) {
+         if (err == cudaErrorNoDevice) {
+            cudaGetLastError();
+            return 0;
+         } else {
+            THCudaCheck(err);
+         }
+      }
       int ret = send(sock, &device, sizeof(device), 0);
       if (ret < 0) {
          close(sock);
