@@ -2,6 +2,8 @@
 
 BackgroundTask combines [ipc.map](map.md) and [ipc.workqueue](workqueue.md) to implement
 a very simple, pollable, way to run a Lua function as background task.
+Internally it is a [ipc.BackgroundTaskPool](BackgroundTaskPool.md) with a pool size of 1
+and a single task added to the pool.
 
 You construct a BackgroundTask with a function and a set of arguments
 to be passed to the function. At any point you can check if the task

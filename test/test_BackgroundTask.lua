@@ -9,7 +9,7 @@ test {
          sys.sleep(t)
          return 'done!', 42, true
       end, 0.7)
-      local s,n,b = task.getResults()
+      local s,n,b = task.getResult()
       assert(s == 'done!')
       assert(n == 42)
       assert(b == true)
@@ -27,7 +27,7 @@ test {
          sys.sleep(0.1)
       end
       assert(x > 9 and x < 16)
-      local s,n,b = task.getResults()
+      local s,n,b = task.getResult()
       assert(s == 'done!')
       assert(n == 42)
       assert(b == true)
@@ -38,7 +38,7 @@ test {
          local sys = require 'sys'
          sys.sleep(t)
       end, 0.4)
-      local y = task.getResults()
+      local y = task.getResult()
       assert(y == nil)
    end,
 
@@ -49,7 +49,7 @@ test {
          error('die')
          return 43
       end, 0.4)
-      assert(pcall(function() return task.getResults() end) == false)
+      assert(pcall(function() return task.getResult() end) == false)
    end,
 
    testErrorPolling = function()
@@ -59,9 +59,9 @@ test {
          error('die')
          return 43
       end, 0.4)
+      assert(not task.isDone())
       sys.sleep(0.6)
-      assert(pcall(function() return task.isDone() end) == false)
-      assert(task.getResults() == nil)
+      assert(task.isDone() == true)
+      assert(pcall(function() return task.getResult() end) == false)
    end,
 }
-
