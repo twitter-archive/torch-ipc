@@ -32,16 +32,7 @@ local function BackgroundTaskPool(poolSize)
       end
    end, name)
 
-   -- Add a task to the queue
-   local function addTask(func, ...)
-      assert(type(func) == 'function')
-      local args = {...}
-      numTasks = numTasks + 1
-      q:write({ id = numTasks, func = func, args = args })
-      -- Return the task's id
-      return numTasks
-   end
-
+   -- Is this task already complete?
    local function hasResult(id)
       return id and (successes[id] or failures[id])
    end
@@ -65,6 +56,19 @@ local function BackgroundTaskPool(poolSize)
       end
       -- Did we see results for one or all?
       return numResults == numTasks or hasResult(id)
+   end
+
+   -- Add a task to the queue
+   local function addTask(func, ...)
+      assert(type(func) == 'function')
+      local args = {...}
+      -- Keep the queue moving by reading some results
+      isDone()
+      -- Add the new task
+      numTasks = numTasks + 1
+      q:write({ id = numTasks, func = func, args = args })
+      -- Return the task's id
+      return numTasks
    end
 
    -- Get the result for one of the tasks

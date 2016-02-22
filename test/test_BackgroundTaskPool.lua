@@ -4,15 +4,15 @@ local BackgroundTaskPool = require 'ipc.BackgroundTaskPool'
 
 test {
    testSimple = function()
-      local pool = BackgroundTaskPool(5)
-      for _ = 1,42 do
+      local pool = BackgroundTaskPool(20)
+      for _ = 1,1000 do
          pool.addTask(function(t)
             local sys = require 'sys'
             sys.sleep(t)
             return math.random()
          end, math.random(1, 1000) / 1000)
       end
-      for i = 1,42 do
+      for i = 1,1000 do
          assert(type(pool.getResult(i)) == 'number')
       end
    end,
