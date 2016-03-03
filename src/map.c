@@ -9,6 +9,7 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#include <unistd.h>
 
 #define MAX_ARG_SIZE (16*1024)
 
@@ -40,23 +41,25 @@ static void* thread_func(void *arg) {
       luaL_openlibs(L);
    }
    // in order to deserialize arguments we need torch and libipc
+   int top = lua_gettop(L);
    if (luaL_loadstring(L, "require 'torch'; require 'libipc'")) {
       lua_close(L);
       return NULL;
    }
-   if (lua_pcall(L, 0, 0, 0)) {
-      lua_close(L);
-      return NULL;
-   }
-   int top = lua_gettop(L);
-   int i = 0;
-   while (ringbuffer_peek(map_thread->rb)) {
-      rb_load(L, map_thread->rb);
-      i++;
-   }
-   map_thread->ret = lua_pcall(L, i - 1, LUA_MULTRET, 0);
+   map_thread->ret = lua_pcall(L, 0, 0, 0);
    if (map_thread->ret) {
       fprintf(stderr, "WARN: ipc.map thread pcall failed: %s\n", lua_tostring(L, -1));
+   } else {
+      top = lua_gettop(L);
+      int i = 0;
+      while (ringbuffer_peek(map_thread->rb)) {
+         rb_load(L, map_thread->rb);
+         i++;
+      }
+      map_thread->ret = lua_pcall(L, i - 1, LUA_MULTRET, 0);
+      if (map_thread->ret) {
+         fprintf(stderr, "WARN: ipc.map thread pcall failed: %s\n", lua_tostring(L, -1));
+      }
    }
    int k = lua_gettop(L) - top;
    for (int i = 1; i <= k; i++) {
@@ -74,12 +77,15 @@ int map_open(lua_State *L) {
    for (uint32_t i = 0; i < num_threads; i++) {
       threads[i].rb = ringbuffer_create(MAX_ARG_SIZE);
       for (int j = 2; j <= k; j++) {
-         rb_save(L, j, threads[i].rb, 0);
+         int ret = rb_save(L, j, threads[i].rb, 0);
+         if (ret) return LUA_HANDLE_ERROR(L, ret);
       }
       lua_pushinteger(L, i + 1);
-      rb_save(L, k + 1, threads[i].rb, 0);
+      int ret = rb_save(L, k + 1, threads[i].rb, 0);
+      if (ret) return LUA_HANDLE_ERROR(L, ret);
       lua_pop(L, 1);
-      pthread_create(&threads[i].thread, NULL, thread_func, threads + i);
+      ret = pthread_create(&threads[i].thread, NULL, thread_func, &threads[i]);
+      if (ret) return LUA_HANDLE_ERROR(L, ret);
    }
    map_t *map = (map_t *)lua_newuserdata(L, sizeof(map_t));
    map->num_threads = num_threads;
@@ -95,7 +101,8 @@ int map_join(lua_State *L) {
    map_t *map = (map_t *)lua_touserdata(L, 1);
    for (uint32_t i = 0; i < map->num_threads; i++) {
       if (map->threads[i].rb) {
-         pthread_join(map->threads[i].thread, NULL);
+         int ret = pthread_join(map->threads[i].thread, NULL);
+         if (ret) return LUA_HANDLE_ERROR(L, ret);
          if (map->threads[i].ret) {
             err_rc = rc;
          }

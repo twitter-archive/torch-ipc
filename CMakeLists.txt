@@ -32,6 +32,14 @@ SET(luasrc
    lua/utils.lua
    lua/BackgroundTask.lua
    lua/BackgroundTaskPool.lua
+   test/test.lua
+   test/test_BackgroundTask.lua
+   test/test_BackgroundTaskPool.lua
+   test/test_cliser.lua
+   test/test_map.lua
+   test/test_spawn.lua
+   test/test_Tree.lua
+   test/test_workqueue.lua
 )
 
 ADD_TORCH_PACKAGE(ipc "${src}" "${luasrc}" "A set of primitives for ipc computation in Torch")

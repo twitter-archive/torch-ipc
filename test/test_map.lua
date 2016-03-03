@@ -76,8 +76,10 @@ test {
    end,
 
    testLuaCheckStack = function()
-      local ret = { ipc.map(1000, function() return 1 end):join() }
-      test.mustBeTrue(#ret == 1000, 'expected 1000 elements, saw '..#ret)
+      -- OSX has low file ulimits that cause the require system to die
+      local n = sys.uname() == 'macos' and 50 or 1000
+      local ret = { ipc.map(n, function() return 1 end):join() }
+      test.mustBeTrue(#ret == n, 'expected '..n..' elements, saw '..#ret)
    end,
 
    testLastArg = function()
