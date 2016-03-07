@@ -10,6 +10,7 @@
 #include <omp.h>
 #endif
 #include <unistd.h>
+#include <errno.h>
 
 #define MAX_ARG_SIZE (16*1024)
 
@@ -26,6 +27,19 @@ typedef struct map_t {
 
 typedef int (*ThreadInitFunc) (lua_State *L);
 ThreadInitFunc _ipc_static_init_thread = NULL;
+
+static int rb_save_with_growth(lua_State *L, int index, struct ringbuffer_t *rb) {
+   while (1) {
+      ringbuffer_push_write_pos(rb);
+      int ret = rb_save(L, index, rb, 0);
+      if (ret == -ENOMEM) {
+         ringbuffer_pop_write_pos(rb);
+         ringbuffer_grow_by(rb, MAX_ARG_SIZE);
+      } else {
+         return ret;
+      }
+   }
+}
 
 static void* thread_func(void *arg) {
 #ifdef _OPENMP
@@ -63,7 +77,12 @@ static void* thread_func(void *arg) {
    }
    int k = lua_gettop(L) - top;
    for (int i = 1; i <= k; i++) {
-      rb_save(L, top + i, map_thread->rb, 0);
+      int ret = rb_save_with_growth(L, top + i, map_thread->rb);
+      if (ret) {
+         fprintf(stderr, "WARN: ipc.map thread failed to write results: %s\n", strerror(-ret));
+         map_thread->ret = ret;
+         break;
+      }
    }
    lua_close(L);
    return 0;
@@ -77,11 +96,11 @@ int map_open(lua_State *L) {
    for (uint32_t i = 0; i < num_threads; i++) {
       threads[i].rb = ringbuffer_create(MAX_ARG_SIZE);
       for (int j = 2; j <= k; j++) {
-         int ret = rb_save(L, j, threads[i].rb, 0);
+         int ret = rb_save_with_growth(L, j, threads[i].rb);
          if (ret) return LUA_HANDLE_ERROR(L, ret);
       }
       lua_pushinteger(L, i + 1);
-      int ret = rb_save(L, k + 1, threads[i].rb, 0);
+      int ret = rb_save_with_growth(L, k + 1, threads[i].rb);
       if (ret) return LUA_HANDLE_ERROR(L, ret);
       lua_pop(L, 1);
       ret = pthread_create(&threads[i].thread, NULL, thread_func, &threads[i]);

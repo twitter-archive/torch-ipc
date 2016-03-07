@@ -90,4 +90,26 @@ test {
       test.mustBeTrue(ret[3] == 3, 'expected 3 at 3')
       test.mustBeTrue(ret[4] == 4, 'expected 4 at 4')
    end,
+
+   testBigArguments = function()
+      local n = 1000
+      local data = { }
+      for i = 1,n do
+        data[i] = i
+      end
+      ipc.map(3, function(data, mapid)
+        return data[mapid]
+      end, data):join()
+   end,
+
+   testBigReturns = function()
+      ipc.map(3, function()
+         local n = 1000
+         local data = { }
+         for i = 1,n do
+           data[i] = i
+         end
+         return data
+      end):join()
+   end,
 }
