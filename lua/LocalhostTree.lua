@@ -1,8 +1,8 @@
 local DiscoveredTree = require 'ipc.DiscoveredTree'
 local ipc = require 'libipc'
 
-local function LocalhostTree(nodeIndex, numNodes)
-   local fn = '/tmp/'..ipc.getppid()..'.localhost'
+local function LocalhostTree(nodeIndex, numNodes, ppid)
+   local fn = '/tmp/'..(ppid or ipc.getppid())..'.localhost'
    local function publish(host, port)
       local f = io.open(fn, 'w')
       f:write(host..':'..port)
