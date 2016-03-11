@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <errno.h>
 
+#define EXTRA_LUA_TINTEGER 127
+
 #define RB_WRITE(L, rb, in, cb) \
    { if (ringbuffer_write((rb), (in), (cb)) != (cb)) return -ENOMEM; }
 
@@ -64,9 +66,19 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop) {
          return 0;
       }
       case LUA_TNUMBER: {
-         RB_WRITE(L, rb, &type, sizeof(char));
-         lua_Number n = lua_tonumber(L, index);
-         RB_WRITE(L, rb, &n, sizeof(n));
+#if LUA_VERSION_NUM >= 503
+         if (lua_isinteger(L, index)) {
+            type = EXTRA_LUA_TINTEGER;
+            RB_WRITE(L, rb, &type, sizeof(char));
+            lua_Integer n = lua_tointeger(L, index);
+            RB_WRITE(L, rb, &n, sizeof(n));
+         } else
+#endif
+         {
+            RB_WRITE(L, rb, &type, sizeof(char));
+            lua_Number n = lua_tonumber(L, index);
+            RB_WRITE(L, rb, &n, sizeof(n));
+         }
          return 0;
       }
       case LUA_TSTRING: {
@@ -104,7 +116,11 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop) {
             lua_pushvalue(L, index);
          }
          // this returns different things under LuaJIT vs Lua
+#if LUA_VERSION_NUM >= 503
+         lua_dump(L, rb_lua_writer, rb, 0);
+#else
          lua_dump(L, rb_lua_writer, rb);
+#endif
          if (index != lua_gettop(L)) {
             lua_pop(L, 1);
          }
@@ -145,6 +161,7 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop) {
 static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
    char type;
    lua_Number n;
+   lua_Integer ni;
    char *str;
    size_t str_len;
    int ret;
@@ -165,6 +182,10 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
       case LUA_TNUMBER:
          RB_READ(L, rb, &n, sizeof(n));
          lua_pushnumber(L, n);
+         return 1;
+      case EXTRA_LUA_TINTEGER:
+         RB_READ(L, rb, &ni, sizeof(ni));
+         lua_pushinteger(L, ni);
          return 1;
       case LUA_TSTRING:
          RB_READ(L, rb, &str_len, sizeof(str_len));
