@@ -153,4 +153,25 @@ test {
       assert(ok == false)
       collectgarbage()
    end,
+
+   testMisuse = function()
+      local ok, msg
+
+      ok, msg = pcall(function()
+         local p = ipc.spawn({
+            file = 'echo',
+            args = 'what', -- should be a table
+         })
+      end)
+      assert(ok == false)
+      assert(string.find(msg, "expected a table"))
+
+      ok, msg = pcall(function()
+         local p = ipc.spawn({
+            file = function() return 'echo' end, -- should be a string
+         })
+      end)
+      assert(ok == false)
+      assert(string.find(msg, "expected a string"))
+   end,
 }

@@ -36,11 +36,17 @@ int spawn_open(lua_State *L) {
 
    lua_pushstring(L, "file");
    lua_gettable(L, 1);
+   if (lua_type(L, -1) != LUA_TSTRING) {
+      return LUA_HANDLE_ERROR_STR(L, "file: expected a string");
+   }
    const char *file = lua_tostring(L, -1);
    lua_pop(L, 1);
 
    lua_pushstring(L, "args");
    lua_gettable(L, 1);
+   if (lua_type(L, -1) != LUA_TNIL && lua_type(L, -1) != LUA_TTABLE) {
+      return LUA_HANDLE_ERROR_STR(L, "args: expected a table, or nil");
+   }
    size_t n = lua_objlen(L, -1);
    char **argv = alloca(sizeof(char *) * (n + 2));
    argv[0] = (char *)file;
