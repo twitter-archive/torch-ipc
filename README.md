@@ -1,7 +1,7 @@
 IPC
 ===
 
-A set of [primitives](doc/index.md) that extend Torch for high performance
+A set of [primitives](doc/index.md) for interprocess communication (IPC) that extend Torch for high performance
 parallel computation across thread and process boundaries.
 
 Tree
