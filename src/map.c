@@ -57,7 +57,7 @@ static void* thread_func(void *arg) {
    // in order to deserialize arguments we need torch and libipc
    // TODO: detect these on the main thread when serializing arguments
    int top = lua_gettop(L);
-   if (luaL_loadstring(L, "require 'torch'; require 'libipc'; require 'twutil'")) {
+   if (luaL_loadstring(L, "require 'torch'; require 'libipc'; pcall(require, 'twutil')")) {
       lua_close(L);
       return NULL;
    }
