@@ -1,6 +1,10 @@
 local ipc = require 'libipc'
 
-local function BackgroundTaskPool(poolSize)
+local function BackgroundTaskPool(poolSize, opt)
+
+   -- Options
+   opt = opt or { }
+   local closeOnLastTask = opt.closeOnLastTask or false
 
    -- Keep track of some stuff
    local numTasks = 0
@@ -71,12 +75,17 @@ local function BackgroundTaskPool(poolSize)
       return numTasks
    end
 
+   -- Is there a task in flight?
+   local function hasTask()
+      return numResults < numTasks
+   end
+
    -- Get the result for one of the tasks
    local function getResult(id)
       -- Make sure the task is done
       isDone(id, true)
       -- If it is the last result then cleanup
-      if numResults == numTasks and m then
+      if closeOnLastTask and numResults == numTasks and m then
          -- Shutdown everything down
          for _ = 1,poolSize do
             q:write(nil)
@@ -85,16 +94,21 @@ local function BackgroundTaskPool(poolSize)
          m = nil
       end
       -- Return the task result
+      id = id or numResults
       if successes[id] then
-         local unpack = unpack or table.unpack
-         return unpack(successes[id])
+         local ret = successes[id]
+         successes[id] = nil
+         return (unpack or table.unpack)(ret)
       elseif failures[id] then
-         error(failures[id])
+         local ret = failures[id]
+         failures[id] = nil
+         error(ret)
       end
    end
 
    return {
       addTask = addTask,
+      hasTask = hasTask,
       isDone = isDone,
       getResult = getResult,
    }

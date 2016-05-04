@@ -138,6 +138,43 @@ test {
       local f = q:read(true)
       test.mustBeTrue(f == nil, 'Expected to read nil after draining')
    end,
+
+   testMultiWrite = function()
+      local a = { }
+      for i = 1,13 do
+         a[i] = i
+      end
+      q:write((unpack or table.unpack)(a))
+      for i = 1,13 do
+         test.mustBeTrue(i == q:read())
+      end
+   end,
+
+   testDualStalls = function()
+      local sq = ipc.workqueue('ds', 16)
+      local m = ipc.map(1, function()
+         local ipc = require 'libipc'
+         local sq = ipc.workqueue('ds')
+         local count = 0
+         while true do
+            local n = sq:read()
+            if n == nil then
+               break
+            end
+            sq:write(n)
+            count = count + n
+         end
+         return count
+      end)
+      local expected = 0
+      for i = 1,100 do
+         sq:write(i)
+         expected = expected + i
+      end
+      sq:write(nil)
+      local final = m:join()
+      assert(final == expected)
+   end,
 }
 
 q:write(nil)

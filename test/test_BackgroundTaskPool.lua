@@ -4,7 +4,7 @@ local BackgroundTaskPool = require 'ipc.BackgroundTaskPool'
 
 test {
    testSimple = function()
-      local pool = BackgroundTaskPool(20)
+      local pool = BackgroundTaskPool(20, { closeOnLastTask = true })
       for _ = 1,1000 do
          pool.addTask(function(t)
             local sys = require 'sys'
@@ -18,7 +18,7 @@ test {
    end,
 
    testPolling = function()
-      local pool = BackgroundTaskPool(13)
+      local pool = BackgroundTaskPool(13, { closeOnLastTask = true })
       for _ = 1,42 do
          pool.addTask(function(t)
             local sys = require 'sys'
@@ -38,7 +38,7 @@ test {
    end,
 
    testError = function()
-      local pool = BackgroundTaskPool(7)
+      local pool = BackgroundTaskPool(7, { closeOnLastTask = true })
       for i = 1,42 do
          pool.addTask(function(t, i)
             local sys = require 'sys'
@@ -59,7 +59,7 @@ test {
    end,
 
    testErrorPolling = function()
-      local pool = BackgroundTaskPool(13)
+      local pool = BackgroundTaskPool(13, { closeOnLastTask = true })
       for i = 1,42 do
          pool.addTask(function(t, i)
             local sys = require 'sys'

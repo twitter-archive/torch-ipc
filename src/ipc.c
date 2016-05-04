@@ -10,6 +10,8 @@
 #include "map.h"
 #include "error.h"
 #include "spawn.h"
+#include "flock.h"
+#include "mutex.h"
 
 int ipc_getpid(lua_State *L) {
    pid_t pid = getpid();
@@ -51,7 +53,18 @@ int ipc_waitpid(lua_State *L) {
    return 0;
 }
 
+int ipc_is_osx(lua_State *L) {
+#ifdef __APPLE__
+   lua_pushboolean(L, 1);
+   return 1;
+#else
+   (void)L;
+   return 0;
+#endif
+}
+
 static const struct luaL_Reg ipc_routines[] = {
+   {"isOSX", ipc_is_osx},
    {"workqueue", workqueue_open},
    {"server", cliser_server},
    {"client", cliser_client},
@@ -62,6 +75,8 @@ static const struct luaL_Reg ipc_routines[] = {
    {"waitpid", ipc_waitpid},
    {"map", map_open},
    {"spawn", spawn_open},
+   {"flock", flock_open},
+   {"mutex", mutex_create},
    {NULL, NULL}
 };
 
@@ -112,10 +127,27 @@ static const struct luaL_Reg map_routines[] = {
 static const struct luaL_Reg spawn_routines[] = {
    {"stdin", spawn_stdin},
    {"stdout", spawn_stdout},
+   {"stdoutFileId", spawn_stdout_file_id},
    {"wait", spawn_wait},
    {"pid", spawn_pid},
    {"running", spawn_running},
    {"__gc", spawn_gc},
+   {NULL, NULL}
+};
+
+static const struct luaL_Reg flock_routines[] = {
+   {"close", flock_close},
+   {"__gc", flock_close},
+   {NULL, NULL}
+};
+
+static const struct luaL_Reg mutex_routines[] = {
+   {"lock", mutex_lock},
+   {"unlock", mutex_unlock},
+   {"barrier", mutex_barrier},
+   {"retain", mutex_retain},
+   {"metatablename", mutex_metatablename},
+   {"__gc", mutex_gc},
    {NULL, NULL}
 };
 
@@ -151,6 +183,16 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, spawn_routines, 0);
+   luaL_newmetatable(L, "ipc.flock");
+   lua_pushstring(L, "__index");
+   lua_pushvalue(L, -2);
+   lua_settable(L, -3);
+   luaT_setfuncs(L, flock_routines, 0);
+   luaL_newmetatable(L, "ipc.mutex");
+   lua_pushstring(L, "__index");
+   lua_pushvalue(L, -2);
+   lua_settable(L, -3);
+   luaT_setfuncs(L, mutex_routines, 0);
    Lcliser_CharInit(L);
    Lcliser_ByteInit(L);
    Lcliser_ShortInit(L);

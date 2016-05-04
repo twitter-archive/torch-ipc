@@ -1,7 +1,7 @@
 local BackgroundTaskPool = require 'ipc.BackgroundTaskPool'
 
 local function BackgroundTask(func, ...)
-   local pool = BackgroundTaskPool(1)
+   local pool = BackgroundTaskPool(1, { closeOnLastTask = true })
    pool.addTask(func, ...)
    local function getResult()
       return pool.getResult(1)

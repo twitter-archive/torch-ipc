@@ -11,6 +11,7 @@ test {
             'dawg',
          },
       })
+      assert(type(p:stdoutFileId()) == 'number')
       assert(p:stdout('*all') == 'what up dawg\n')
       assert(p:stdout('*all') == nil)
       assert(p:wait() == 0)

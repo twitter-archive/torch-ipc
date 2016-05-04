@@ -17,6 +17,7 @@ typedef struct queue_t {
    pthread_cond_t read_avail_cond;
    pthread_cond_t write_avail_cond;
    uint32_t num_items;
+   uint32_t num_stalled;
 } queue_t;
 
 typedef struct workqueue_t {
@@ -175,15 +176,17 @@ int workqueue_read(lua_State *L) {
    }
 }
 
-static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
+static int workqueue_queue_write(lua_State *L, int index, queue_t *queue, queue_t *queue_opposite) {
    pthread_mutex_lock(&queue->mutex);
-   while (1) {
+   while (index <= lua_gettop(L)) {
       ringbuffer_push_write_pos(queue->rb);
       int ret = rb_save(L, index, queue->rb, 0);
       if (ret == -ENOMEM) {
          ringbuffer_pop_write_pos(queue->rb);
-         if (ringbuffer_peek(queue->rb)) {
+         if (ringbuffer_peek(queue->rb) && queue_opposite->num_stalled == 0) {
+            queue->num_stalled++;
             pthread_cond_wait(&queue->write_avail_cond, &queue->mutex);
+            queue->num_stalled--;
          } else {
             ringbuffer_grow_by(queue->rb, DEFAULT_WORKQUEUE_SIZE);
             fprintf(stderr, "INFO: ipc.workqueue grew to %zu bytes\n", queue->rb->cb);
@@ -193,10 +196,10 @@ static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
          pthread_mutex_unlock(&queue->mutex);
          return LUA_HANDLE_ERROR(L, -ret);
       } else {
-         break;
+         index++;
+         queue->num_items++;
       }
    }
-   queue->num_items++;
    pthread_cond_signal(&queue->read_avail_cond);
    pthread_mutex_unlock(&queue->mutex);
    return 0;
@@ -207,9 +210,9 @@ int workqueue_write(lua_State *L) {
    workqueue_t *workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    if (workqueue->owner_thread == pthread_self()) {
-      return workqueue_queue_write(L, 2, &workqueue->questions);
+      return workqueue_queue_write(L, 2, &workqueue->questions, &workqueue->answers);
    } else {
-      return workqueue_queue_write(L, 2, &workqueue->answers);
+      return workqueue_queue_write(L, 2, &workqueue->answers, &workqueue->questions);
    }
 }
 

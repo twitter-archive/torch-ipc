@@ -22,6 +22,8 @@ SET(src
    src/cliser.c
    src/map.c
    src/spawn.c
+   src/flock.c
+   src/mutex.c
 )
 SET(luasrc
    lua/Tree.lua
@@ -40,6 +42,7 @@ SET(luasrc
    test/test_spawn.lua
    test/test_Tree.lua
    test/test_workqueue.lua
+   test/test_mutex.lua
 )
 
 ADD_TORCH_PACKAGE(ipc "${src}" "${luasrc}" "A set of primitives for ipc computation in Torch")

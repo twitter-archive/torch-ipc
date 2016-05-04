@@ -162,14 +162,20 @@ int spawn_wait(lua_State *L) {
       if (ret) return LUA_HANDLE_ERROR(L, errno);
       spawn->fd[0][1] = 0;
    }
-   // read whatever is left on stdout, we dont want the process to be stalled on us
-   char buff[1024];
-   while (1) {
-      ssize_t x = read((*uspawn)->fd[1][0], buff, 1024);
-      if (x < 0) {
-         return LUA_HANDLE_ERROR(L, errno);
-      } else if (x == 0) {
-         break;
+   if (signame) {
+      // just close stdout, we dont care at this point
+      close((*uspawn)->fd[1][0]);
+      (*uspawn)->fd[1][0] = 0;
+   } else {
+      // read whatever is left on stdout, we dont want the process to be stalled on us
+      char buff[1024];
+      while (1) {
+         ssize_t x = read((*uspawn)->fd[1][0], buff, 1024);
+         if (x < 0) {
+            return LUA_HANDLE_ERROR(L, errno);
+         } else if (x == 0) {
+            break;
+         }
       }
    }
    // wait for exit
@@ -297,6 +303,13 @@ int spawn_stdout(lua_State *L) {
          }
       }
    }
+}
+
+int spawn_stdout_file_id(lua_State *L) {
+   spawn_t **uspawn = lua_touserdata(L, 1);
+   if (!*uspawn) return LUA_HANDLE_ERROR_STR(L, "spawn was already closed");
+   lua_pushinteger(L, (*uspawn)->fd[1][0]);
+   return 1;
 }
 
 int spawn_pid(lua_State *L) {
