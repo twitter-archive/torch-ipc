@@ -11,13 +11,16 @@
 
 #define DEFAULT_WORKQUEUE_SIZE (16*1024)
 
+#define TOO_TRICKY (0)
+
 typedef struct queue_t {
    struct ringbuffer_t* rb;
    pthread_mutex_t mutex;
    pthread_cond_t read_avail_cond;
+#if TOO_TRICKY
    pthread_cond_t write_avail_cond;
+#endif
    uint32_t num_items;
-   uint32_t num_stalled;
 } queue_t;
 
 typedef struct workqueue_t {
@@ -88,14 +91,18 @@ static void workqueue_init_queue(queue_t *queue, size_t size) {
    pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
    pthread_mutex_init(&queue->mutex, &mutex_attr);
    pthread_cond_init(&queue->read_avail_cond, NULL);
+#if TOO_TRICKY
    pthread_cond_init(&queue->write_avail_cond, NULL);
+#endif
    queue->rb = ringbuffer_create(size);
 }
 
 static void workqueue_destroy_queue(queue_t *queue) {
    pthread_mutex_destroy(&queue->mutex);
    pthread_cond_destroy(&queue->read_avail_cond);
+#if TOO_TRICKY
    pthread_cond_destroy(&queue->write_avail_cond);
+#endif
    ringbuffer_destroy(queue->rb);
 }
 
@@ -150,7 +157,9 @@ static int workqueue_queue_read(lua_State *L, queue_t *queue, int doNotBlock) {
       if (queue->num_items) {
          int ret = rb_load(L, queue->rb);
          queue->num_items--;
+#if TOO_TRICKY
          pthread_cond_signal(&queue->write_avail_cond);
+#endif
          pthread_mutex_unlock(&queue->mutex);
          if (ret < 0) return LUA_HANDLE_ERROR(L, ret);
          return ret;
@@ -176,18 +185,19 @@ int workqueue_read(lua_State *L) {
    }
 }
 
-static int workqueue_queue_write(lua_State *L, int index, queue_t *queue, queue_t *queue_opposite) {
+static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
    pthread_mutex_lock(&queue->mutex);
    while (index <= lua_gettop(L)) {
       ringbuffer_push_write_pos(queue->rb);
       int ret = rb_save(L, index, queue->rb, 0);
       if (ret == -ENOMEM) {
          ringbuffer_pop_write_pos(queue->rb);
-         if (ringbuffer_peek(queue->rb) && queue_opposite->num_stalled == 0) {
-            queue->num_stalled++;
+#if TOO_TRICKY
+         if (ringbuffer_peek(queue->rb)) {
             pthread_cond_wait(&queue->write_avail_cond, &queue->mutex);
-            queue->num_stalled--;
-         } else {
+         } else
+#endif
+         {
             ringbuffer_grow_by(queue->rb, DEFAULT_WORKQUEUE_SIZE);
             fprintf(stderr, "INFO: ipc.workqueue grew to %zu bytes\n", queue->rb->cb);
          }
@@ -210,9 +220,9 @@ int workqueue_write(lua_State *L) {
    workqueue_t *workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    if (workqueue->owner_thread == pthread_self()) {
-      return workqueue_queue_write(L, 2, &workqueue->questions, &workqueue->answers);
+      return workqueue_queue_write(L, 2, &workqueue->questions);
    } else {
-      return workqueue_queue_write(L, 2, &workqueue->answers, &workqueue->questions);
+      return workqueue_queue_write(L, 2, &workqueue->answers);
    }
 }
 
