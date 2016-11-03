@@ -99,6 +99,22 @@ test {
       test.mustBeTrue(n == n1, 'Function serialization failed '..n..' ~= '..n1)
    end,
 
+   testClosures = function()
+      if f3rtwertwert534 ~= nil then
+         return
+      end
+      -- global function with an unlikely name
+      f3rtwertwert534 = function() return 534 end
+      local bias1, bias2, bias3 = 0, 1, 2
+      local f0 = function() return f3rtwertwert534() + bias3 end
+      local f = function(a, b, c) return f0() + bias2 + bias1 + math.sqrt((a * a) + (b * b) + (c * c)) end
+      q:write(f)
+      local f1 = q:read()
+      local n = f(1, 2, 3)
+      local n1 = f1(1, 2, 3)
+      test.mustBeTrue(n == n1, 'Function serialization failed '..n..' ~= '..n1)
+      f3rtwertwert534 = nil
+   end,
    testTensors = function()
       local f = torch.randn(10)
       q:write(f)
