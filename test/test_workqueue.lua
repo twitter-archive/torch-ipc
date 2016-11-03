@@ -1,11 +1,12 @@
 local test = require 'regress'
 local ipc = require 'libipc'
 
-local q = ipc.workqueue('test')
+local name = 'test'
+local q = ipc.workqueue(name)
 
-local echo = ipc.map(1, function()
+local echo = ipc.map(1, function(name)
    local ipc = require 'libipc'
-   local q = ipc.workqueue('test')
+   local q = ipc.workqueue(name)
    while true do
       local msg = q:read()
       if msg == nil then
@@ -20,7 +21,7 @@ local echo = ipc.map(1, function()
       q:write(msg)
    end
    q:close()
-end)
+end, "test")
 
 local function tableEq(t0, t1)
    for k,v in pairs(t0) do

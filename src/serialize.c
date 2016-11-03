@@ -111,6 +111,7 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop) {
          return 0;
       }
       case LUA_TFUNCTION: {
+
          RB_WRITE(L, rb, &type, sizeof(char));
          if (index != lua_gettop(L)) {
             lua_pushvalue(L, index);
@@ -128,9 +129,6 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop) {
 #else
          lua_dump(L, rb_lua_writer, rb);
 #endif
-         if (index != lua_gettop(L)) {
-            lua_pop(L, 1);
-         }
 
          size_t str_len = 0;
          RB_WRITE(L, rb, &str_len, sizeof(size_t)); // zero-terminated
@@ -153,6 +151,11 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop) {
          // write upvalue table
          int ret = rb_save(L, lua_gettop(L), rb, oop);
          lua_pop(L, 1);
+
+         if (index != lua_gettop(L)) {
+            lua_pop(L, 1);
+         }
+
          if (ret) {
             return ret;
          }
