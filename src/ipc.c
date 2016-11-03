@@ -84,6 +84,7 @@ static const struct luaL_Reg workqueue_routines[] = {
    {"close", workqueue_close},
    {"read", workqueue_read},
    {"write", workqueue_write},
+   {"writeup", workqueue_writeup},
    {"drain", workqueue_drain},
    {NULL, NULL}
 };

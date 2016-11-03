@@ -12,6 +12,7 @@
 #define DEFAULT_WORKQUEUE_SIZE (16*1024)
 
 #define TOO_TRICKY (0)
+#define WORKQUEUE_VERBOSE (0)
 
 typedef struct queue_t {
    struct ringbuffer_t* rb;
@@ -185,11 +186,11 @@ int workqueue_read(lua_State *L) {
    }
 }
 
-static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
+static int workqueue_queue_write(lua_State *L, int index, queue_t *queue, int upval) {
    pthread_mutex_lock(&queue->mutex);
    while (index <= lua_gettop(L)) {
       ringbuffer_push_write_pos(queue->rb);
-      int ret = rb_save(L, index, queue->rb, 0);
+      int ret = rb_save(L, index, queue->rb, 0, upval);
       if (ret == -ENOMEM) {
          ringbuffer_pop_write_pos(queue->rb);
 #if TOO_TRICKY
@@ -199,7 +200,9 @@ static int workqueue_queue_write(lua_State *L, int index, queue_t *queue) {
 #endif
          {
             ringbuffer_grow_by(queue->rb, DEFAULT_WORKQUEUE_SIZE);
+#if WORKQUEUE_VERBOSE
             fprintf(stderr, "INFO: ipc.workqueue grew to %zu bytes\n", queue->rb->cb);
+#endif
          }
       } else if (ret) {
          ringbuffer_pop_write_pos(queue->rb);
@@ -220,11 +223,23 @@ int workqueue_write(lua_State *L) {
    workqueue_t *workqueue = context->workqueue;
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    if (workqueue->owner_thread == pthread_self()) {
-      return workqueue_queue_write(L, 2, &workqueue->questions);
+      return workqueue_queue_write(L, 2, &workqueue->questions, 0);
    } else {
-      return workqueue_queue_write(L, 2, &workqueue->answers);
+      return workqueue_queue_write(L, 2, &workqueue->answers, 0);
    }
 }
+
+int workqueue_writeup(lua_State *L) {
+   context_t *context = (context_t *)lua_touserdata(L, 1);
+   workqueue_t *workqueue = context->workqueue;
+   if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
+   if (workqueue->owner_thread == pthread_self()) {
+      return workqueue_queue_write(L, 2, &workqueue->questions, 1);
+   } else {
+      return workqueue_queue_write(L, 2, &workqueue->answers, 1);
+   }
+}
+
 
 int workqueue_drain(lua_State *L) {
    context_t *context = (context_t *)lua_touserdata(L, 1);

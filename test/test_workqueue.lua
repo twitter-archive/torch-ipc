@@ -9,16 +9,20 @@ local echo = ipc.map(1, function(name)
    local q = ipc.workqueue(name)
    while true do
       local msg = q:read()
-      if msg == nil then
-         break
-      elseif torch.typename(msg) then
-         if msg:size(1) == 1 then
-            msg:fill(13)
+      if torch.type(msg) == 'table' and msg.closure then
+         q:writeup(msg[1])
+      else
+         if msg == nil then
+            break
+         elseif torch.typename(msg) then
+            if msg:size(1) == 1 then
+               msg:fill(13)
+            end
+         elseif type(msg) == 'table' and torch.typename(msg.f) then
+            msg.f:fill(42)
          end
-      elseif type(msg) == 'table' and torch.typename(msg.f) then
-         msg.f:fill(42)
+         q:write(msg)
       end
-      q:write(msg)
    end
    q:close()
 end, "test")
@@ -109,13 +113,14 @@ test {
       local bias1, bias2, bias3 = 0, 1, 2
       local f0 = function() return f3rtwertwert534() + bias3 end
       local f = function(a, b, c) return f0() + bias2 + bias1 + math.sqrt((a * a) + (b * b) + (c * c)) end
-      q:write(f)
+      q:writeup({f,closure=true}) -- writeup
       local f1 = q:read()
       local n = f(1, 2, 3)
       local n1 = f1(1, 2, 3)
       test.mustBeTrue(n == n1, 'Function serialization failed '..n..' ~= '..n1)
       f3rtwertwert534 = nil
    end,
+
    testTensors = function()
       local f = torch.randn(10)
       q:write(f)

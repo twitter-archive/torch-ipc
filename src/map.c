@@ -31,7 +31,7 @@ ThreadInitFunc _ipc_static_init_thread = NULL;
 static int rb_save_with_growth(lua_State *L, int index, struct ringbuffer_t *rb) {
    while (1) {
       ringbuffer_push_write_pos(rb);
-      int ret = rb_save(L, index, rb, 0);
+      int ret = rb_save(L, index, rb, 0, 0); // map doesn't support upvalues
       if (ret == -ENOMEM) {
          ringbuffer_pop_write_pos(rb);
          ringbuffer_grow_by(rb, MAX_ARG_SIZE);
@@ -63,7 +63,7 @@ static void* thread_func(void *arg) {
    }
    map_thread->ret = lua_pcall(L, 0, 0, 0);
    if (map_thread->ret) {
-      fprintf(stderr, "WARN: ipc.map thread pcall failed: %s\n", lua_tostring(L, -1));
+      fprintf(stderr, "WARN1: ipc.map thread pcall failed: %s\n", lua_tostring(L, -1));
    } else {
       top = lua_gettop(L);
       int i = 0;
@@ -73,7 +73,7 @@ static void* thread_func(void *arg) {
       }
       map_thread->ret = lua_pcall(L, i - 1, LUA_MULTRET, 0);
       if (map_thread->ret) {
-         fprintf(stderr, "WARN: ipc.map thread pcall failed: %s\n", lua_tostring(L, -1));
+         fprintf(stderr, "WARN2: ipc.map thread pcall failed: %s\n", lua_tostring(L, -1));
       }
    }
    int k = lua_gettop(L) - top;
