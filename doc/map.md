@@ -33,6 +33,9 @@ threads have died. The __:checkErrors()__ function will bubble
 up an errors. You can wrap this in a pcall if you think the
 error is recoverable (generally, it is not).
 
+Note that __ipc.map()__ will throw an error when attempting to serialize closures/upvalues.
+However [ipc.workqueue](workqueue.md) provides __:writeup()__ for serializing closures/upvalues.
+
 Most often [ipc.map](map.md) is combined with an [ipc.workqueue](workqueue.md)
 in order to distribute work across the threads.
 A more concrete example of combining [ipc.map](map.md) and [ipc.workqueue](workqueue.md)

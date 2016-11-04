@@ -63,3 +63,7 @@ use curl to upload the saved file to a hypothetical website.
    local ret,t = background.getResults()
    print('curl returned  '..ret..' in '..t..' seconds')
 ```
+
+Note that __ipc.BackgroundTask__ will throw an error when attempting to serialize closures/upvalues.
+However [ipc.workqueue](workqueue.md) provides __:writeup()__ for serializing closures/upvalues.
+

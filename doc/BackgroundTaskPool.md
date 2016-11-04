@@ -41,3 +41,6 @@ error.
       assert(pool.getResult(i) == math.sqrt(i))
    end
 ```
+
+Note that __ipc.BackgroundTaskPool__ will throw an error when attempting to serialize closures/upvalues.
+However [ipc.workqueue](workqueue.md) provides __:writeup()__ for serializing closures/upvalues.
