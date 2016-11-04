@@ -523,7 +523,7 @@ static int sock_recv_raw(lua_State *L, int sock, void *ptr, size_t len, copy_con
 
 static int sock_send_msg(lua_State *L, int index, int sock, ringbuffer_t *rb, copy_context_t *copy_context) {
    ringbuffer_push_write_pos(rb);
-   int ret = rb_save(L, index, rb, 1);
+   int ret = rb_save(L, index, rb, 1, 0);
    if (ret) return LUA_HANDLE_ERROR(L, ret);
    size_t len = ringbuffer_peek(rb);
    ringbuffer_pop_write_pos(rb);
