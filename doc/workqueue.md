@@ -71,11 +71,10 @@ However, we do provide __:writeup()__ for serializing closures/upvalues.
 So calling __:writeup(closure)__ will not fail.
 
 In Lua, almost everything is an upvalues. 
-For example, the `nn` variable is an upvalue in the following `closure()`:
+For example, the `nn` variable is an upvalue in the following `heavyclosure()`:
 
 ```lua
-local nn = require 'nn'
-
+local nn = require 'nn' -- upvalue
 local heavyclosure = function(input)
    return nn.Linear:forward(input)
 end
@@ -93,8 +92,10 @@ end
 
 Calling __:write(lightfunction)__ will be much more efficient.
 
-As a final note on __:writeup()__, for the powerusers out there, note that we do not serialize the `_ENV` upvalue of closures.
-Typically `_ENV = _G` in the writing thread, which would be too heavy to serialize. So instead we set the deserialized `_ENV` to the reading threads `_G`.
+As a final note for the powerusers out there, know that _:writeup()__ does not serialize the `_ENV` upvalue of closures.
+Typically `_ENV = _G` in the writing thread, which would be too heavy to serialize. 
+Instead we set the `_ENV` upvalue of the deserialized closure to the reading threads `_G`.
+So if you dont see any `_ENV` in your code, you should be fine.
 
 ### multi-write
 
