@@ -14,7 +14,7 @@ local echo = ipc.map(1, function(name)
       else
          if msg == nil then
             break
-         elseif torch.typename(msg) then
+         elseif torch.isTensor(msg) then
             if msg:size(1) == 1 then
                msg:fill(13)
             end
@@ -92,6 +92,21 @@ test {
       q:write(n)
       local n1 = q:read()
       local e, msg = tableEq(n, n1)
+      test.mustBeTrue(e, 'Table serialization failed '..msg)
+   end,
+
+   testMetaTables = function()
+      local class = torch.class("torch.asdfasdfa")
+      local cmd = torch.asdfasdfa()
+      local cmd = torch.CmdLine()
+      cmd.id = 1234
+      cmd.cmd = torch.CmdLine()
+      q:write(cmd)
+      local cmd1 = q:read()
+      test.mustBeTrue(torch.typename(cmd) == torch.typename(cmd1), "Metatable serialization failed")
+      test.mustBeTrue(torch.typename(cmd.cmd) == torch.typename(cmd1.cmd), "Metatable nested serialization failed")
+      test.mustBeTrue(cmd.id == 1234, "Metatable table serialize fail")
+      local e, msg = tableEq(cmd, cmd1)
       test.mustBeTrue(e, 'Table serialization failed '..msg)
    end,
 
