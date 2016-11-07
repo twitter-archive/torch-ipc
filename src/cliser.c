@@ -298,7 +298,7 @@ int cliser_client(lua_State *L) {
    if (ret) return ret;
    struct timeval tv;
    gettimeofday(&tv, NULL);
-   uint32_t t = tv.tv_sec + DEFAULT_TIMEOUT_SECONDS;
+   time_t t = tv.tv_sec + DEFAULT_TIMEOUT_SECONDS;
    int sock = -1;
    while (tv.tv_sec < t) {
       ret = socket(PF_INET, SOCK_STREAM, 0);
