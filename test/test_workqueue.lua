@@ -6,6 +6,8 @@ local q = ipc.workqueue(name)
 
 local echo = ipc.map(1, function(name)
    local ipc = require 'libipc'
+   local lib = {}
+   local class = torch.class("lib.class", lib)
    local q = ipc.workqueue(name)
    while true do
       local msg = q:read()
@@ -14,7 +16,9 @@ local echo = ipc.map(1, function(name)
       else
          if msg == nil then
             break
-         elseif torch.typename(msg) then
+         elseif torch.type(msg) == 'lib.class' then
+            msg.reply = true
+         elseif torch.isTensor(msg) then
             if msg:size(1) == 1 then
                msg:fill(13)
             end
@@ -92,6 +96,28 @@ test {
       q:write(n)
       local n1 = q:read()
       local e, msg = tableEq(n, n1)
+      test.mustBeTrue(e, 'Table serialization failed '..msg)
+   end,
+
+   testMetaTables = function()
+      -- local module class
+      local lib = {}
+      local class = torch.class('lib.class', lib)
+      local cmd = lib.class()
+      q:write(cmd)
+      local cmd1 = q:read()
+      test.mustBeTrue(torch.typename(cmd) == torch.typename(cmd1), "local Metatable serialization failed")
+      test.mustBeTrue(cmd1.reply, "local Metatable table serialize fail")
+      -- global module class
+      local cmd = torch.CmdLine()
+      cmd.id = 1234
+      cmd.cmd = torch.CmdLine()
+      q:write(cmd)
+      local cmd1 = q:read()
+      test.mustBeTrue(torch.typename(cmd) == torch.typename(cmd1), "global Metatable serialization failed")
+      test.mustBeTrue(torch.typename(cmd.cmd) == torch.typename(cmd1.cmd), "global Metatable nested serialization failed")
+      test.mustBeTrue(cmd.id == 1234, "global Metatable table serialize fail")
+      local e, msg = tableEq(cmd, cmd1)
       test.mustBeTrue(e, 'Table serialization failed '..msg)
    end,
 

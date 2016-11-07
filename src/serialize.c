@@ -92,9 +92,11 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
       case LUA_TTABLE: {
          RB_WRITE(L, rb, &type, sizeof(char));
          int top = lua_gettop(L);
+         int ret;
+
          lua_pushnil(L);
          while (lua_next(L, index) != 0) {
-            int ret = rb_save(L, top + 1, rb, oop, upval); // key
+            ret = rb_save(L, top + 1, rb, oop, upval); // key
             if (ret) {
                lua_pop(L, 2);
                return ret;
@@ -107,7 +109,21 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
             lua_pop(L, 1);
          }
          type = LUA_TNIL;
-         RB_WRITE(L, rb, &type, sizeof(char));
+         RB_WRITE(L, rb, &type, sizeof(char)); // breaks the read loop
+
+         // the typename identifies the metatable
+         const char *str = luaT_typename(L, index);
+         if (!str) {
+            if (luaL_callmeta(L, index, "metatablename")) {
+               str = lua_tostring(L, lua_gettop(L));
+               lua_pop(L, 1);
+            } else {
+               str = "";
+            }
+         }
+         size_t str_len = strlen(str);
+         RB_WRITE(L, rb, &str_len, sizeof(str_len));
+         RB_WRITE(L, rb, str, str_len);
          return 0;
       }
       case LUA_TFUNCTION: {
@@ -241,6 +257,18 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
             rb_load_rcsv(L, rb, 0); // value
             lua_settable(L, -3);
          }
+
+         // read typename
+         RB_READ(L, rb, &str_len, sizeof(str_len));
+         str = alloca(str_len + 1);
+         RB_READ(L, rb, str, str_len);
+         str[str_len] = 0;
+
+         if (str_len > 0) { 
+            luaL_getmetatable(L, str);
+            lua_setmetatable(L, -2);
+         }
+
          return 1;
       case LUA_TFUNCTION:
          chunked.rb = rb;
