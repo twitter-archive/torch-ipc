@@ -188,7 +188,8 @@ int workqueue_read(lua_State *L) {
 
 static int workqueue_queue_write(lua_State *L, int index, queue_t *queue, int upval) {
    pthread_mutex_lock(&queue->mutex);
-   while (index <= lua_gettop(L)) {
+   int top = lua_gettop(L);
+   while (index <= top) {
       ringbuffer_push_write_pos(queue->rb);
       int ret = rb_save(L, index, queue->rb, 0, upval);
       if (ret == -ENOMEM) {
