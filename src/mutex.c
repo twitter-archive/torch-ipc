@@ -4,9 +4,11 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include "TH.h"
+#include "luaT.h"
 
 typedef struct mutex_t {
-   size_t ref_count;
+   int ref_count;
    pthread_mutex_t mutex;
    pthread_cond_t cond;
    int64_t barrier;
@@ -71,7 +73,7 @@ int mutex_barrier(lua_State *L) {
 
 int mutex_retain(lua_State *L) {
    mutex_t *mutex = *(mutex_t **)lua_touserdata(L, 1);
-   mutex->ref_count++;
+   THAtomicIncrementRef(&mutex->ref_count);
    return 0;
 }
 
@@ -82,8 +84,7 @@ int mutex_metatablename(lua_State *L) {
 
 int mutex_gc(lua_State *L) {
    mutex_t *mutex = *(mutex_t **)lua_touserdata(L, 1);
-   mutex->ref_count--;
-   if (mutex->ref_count == 0) {
+   if (THAtomicDecrementRef(&mutex->ref_count)) {
       pthread_mutex_destroy(&mutex->mutex);
       pthread_cond_destroy(&mutex->cond);
       free(mutex);

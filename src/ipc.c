@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdlib.h>
 #include "luaT.h"
 #include "workqueue.h"
 #include "cliser.h"
@@ -12,6 +13,7 @@
 #include "spawn.h"
 #include "flock.h"
 #include "mutex.h"
+#include "sharedtable.h"
 
 int ipc_getpid(lua_State *L) {
    pid_t pid = getpid();
@@ -63,6 +65,17 @@ int ipc_is_osx(lua_State *L) {
 #endif
 }
 
+int ipc_is_devel(lua_State *L) {
+#ifdef __APPLE__
+    int is_devel = 1;
+#else
+    char *devel_mode = getenv("CKOIA_DEVEL_MODE");
+    int is_devel = devel_mode && devel_mode[0] == '1';
+#endif
+    lua_pushboolean(L, is_devel);
+    return 1;
+}
+
 static const struct luaL_Reg ipc_routines[] = {
    {"isOSX", ipc_is_osx},
    {"workqueue", workqueue_open},
@@ -74,9 +87,13 @@ static const struct luaL_Reg ipc_routines[] = {
    {"fork", ipc_fork},
    {"waitpid", ipc_waitpid},
    {"map", map_open},
+   {"map_extended", map_extended_open},
    {"spawn", spawn_open},
    {"flock", flock_open},
    {"mutex", mutex_create},
+   {"sharedtable", sharedtable_create},
+   {"sharedtable_size", sharedtable_size},
+   {"isDevel", ipc_is_devel},
    {NULL, NULL}
 };
 
@@ -86,6 +103,9 @@ static const struct luaL_Reg workqueue_routines[] = {
    {"write", workqueue_write},
    {"writeup", workqueue_writeup},
    {"drain", workqueue_drain},
+   {"retain", workqueue_retain},
+   {"metatablename", workqueue_metatablename},
+   {"__gc", workqueue_gc},
    {NULL, NULL}
 };
 
@@ -104,6 +124,7 @@ static const struct luaL_Reg server_client_routines[] = {
    {"tag", cliser_server_tag},
    {"id", cliser_server_id},
    {"close", cliser_server_client_close},
+   {"address", cliser_server_client_address},
    {NULL, NULL}
 };
 
@@ -152,6 +173,17 @@ static const struct luaL_Reg mutex_routines[] = {
    {NULL, NULL}
 };
 
+static const struct luaL_Reg sharedtable_routines[] = {
+   {"retain", sharedtable_retain},
+   {"metatablename", sharedtable_metatablename},
+   {"__gc", sharedtable_gc},
+   {"__index", sharedtable_read},
+   {"__newindex", sharedtable_write},
+   {"__len", sharedtable_len},
+   {"__pairs", sharedtable_pairs},
+   {NULL, NULL}
+};
+
 DLL_EXPORT int luaopen_libipc(lua_State *L) {
    signal(SIGPIPE, SIG_IGN);  // don't die for SIGPIPE
    luaL_newmetatable(L, "ipc.workqueue");
@@ -194,6 +226,8 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, mutex_routines, 0);
+   luaL_newmetatable(L, "ipc.sharedtable");
+   luaT_setfuncs(L, sharedtable_routines, 0);
    Lcliser_CharInit(L);
    Lcliser_ByteInit(L);
    Lcliser_ShortInit(L);

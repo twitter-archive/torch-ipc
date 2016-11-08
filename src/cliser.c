@@ -5,9 +5,12 @@
 #include "luaT.h"
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
 #include <netinet/tcp.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -19,6 +22,7 @@
 #define SEND_RECV_SIZE (16*1024)
 #define DEFAULT_HOST "127.0.0.1"
 #define DEFAULT_TIMEOUT_SECONDS (5*60)
+#define LEN_INVALID 0xFFFFFFFFFFFFFFFFULL
 
 typedef struct net_stats_t {
    uint64_t num_bytes;
@@ -126,6 +130,8 @@ static void destroy_copy_context(copy_context_t *copy_context) {
 
 static int destroy_client(lua_State *L, client_t *client) {
    if (client->sock) {
+      size_t msg = LEN_INVALID;
+      send(client->sock, &msg, sizeof(msg), 0);
       int ret = close(client->sock);
       if (ret) return LUA_HANDLE_ERROR(L, errno);
       client->sock = 0;
@@ -182,6 +188,20 @@ static int get_sockaddr(lua_State *L, const char *host, const char *port, struct
    *addrlen = ai->ai_addrlen;
    freeaddrinfo(ai);
    return 0;
+}
+
+static void configure_socket(int sock) {
+   int value = 1;
+   setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(int));
+#ifndef __APPLE__
+   int idle = 60;
+   int interval = 30;
+   int count = 8;
+   setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &value, sizeof(int));
+   setsockopt(sock, SOL_TCP, TCP_KEEPIDLE, &idle, sizeof(int));
+   setsockopt(sock, SOL_TCP, TCP_KEEPINTVL, &interval, sizeof(int));
+   setsockopt(sock, SOL_TCP, TCP_KEEPCNT, &count, sizeof(int));
+#endif
 }
 
 int cliser_server(lua_State *L) {
@@ -304,9 +324,7 @@ int cliser_client(lua_State *L) {
       ret = socket(PF_INET, SOCK_STREAM, 0);
       if (ret <= 0) return LUA_HANDLE_ERROR(L, errno);
       sock = ret;
-      int value = 1;
-      ret = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value));
-      if (ret) break;
+      configure_socket(ret);
       ret = connect(sock, &addr, addrlen);
       if (!ret) break;
       close(sock);
@@ -397,22 +415,36 @@ int cliser_server_clients(lua_State *L) {
       tag = NULL;
       invert_order = 0;
    }
+   struct timeval tv;
+   gettimeofday(&tv, NULL);
+   uint32_t t = tv.tv_sec + DEFAULT_TIMEOUT_SECONDS;
    while (wait > server->num_clients) {
-      struct sockaddr addr;
-      socklen_t addrlen = sizeof(addr);
-      int ret = accept(server->sock, &addr, &addrlen);
-      if (ret <= 0) return LUA_HANDLE_ERROR(L, errno);
-      int sock = ret;
-      int value = 1;
-      ret = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value));
-      if (ret) return LUA_HANDLE_ERROR(L, errno);
-      int use_fastpath = can_use_fastpath(L, sock, server->ip_address, ((struct sockaddr_in *)&addr)->sin_addr.s_addr);
-      client_t *client = (client_t *)calloc(1, sizeof(client_t));
-      client->sock = sock;
-      client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
-      client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
-      client->copy_context.use_fastpath = use_fastpath;
-      insert_client(server, client);
+      fd_set acceptfds;
+      FD_ZERO(&acceptfds);
+      FD_SET(server->sock, &acceptfds);
+      struct timeval accepttv;
+      accepttv.tv_sec = 30;
+      accepttv.tv_usec = 0;
+      int ret = select(server->sock + 1, &acceptfds, NULL, NULL, &accepttv);
+      if (ret > 0 && FD_ISSET(server->sock, &acceptfds)) {
+         struct sockaddr addr;
+         socklen_t addrlen = sizeof(addr);
+         int ret = accept(server->sock, &addr, &addrlen);
+         if (ret <= 0) return LUA_HANDLE_ERROR(L, errno);
+         int sock = ret;
+         configure_socket(ret);
+         int use_fastpath = can_use_fastpath(L, sock, server->ip_address, ((struct sockaddr_in *)&addr)->sin_addr.s_addr);
+         client_t *client = (client_t *)calloc(1, sizeof(client_t));
+         client->sock = sock;
+         client->send_rb = ringbuffer_create(SEND_RECV_SIZE);
+         client->recv_rb = ringbuffer_create(SEND_RECV_SIZE);
+         client->copy_context.use_fastpath = use_fastpath;
+         insert_client(server, client);
+      }
+      gettimeofday(&tv, NULL);
+      if (tv.tv_sec > t) {
+         return LUA_HANDLE_ERROR_STR(L, "server timed out waiting for clients to connect");
+      }
    }
    client_t **clients = alloca(server->num_clients * sizeof(client_t*));
    client_t *client = server->clients;
@@ -435,6 +467,7 @@ int cliser_server_clients(lua_State *L) {
       server_client->server = server;
       server_client->client = clients[j];
       luaL_getmetatable(L, "ipc.server.client");
+
       lua_setmetatable(L, -2);
       lua_call(L, 1, 0);
       server_client->server = NULL;
@@ -483,24 +516,48 @@ int cliser_server_client_close(lua_State *L) {
    return 0;
 }
 
-static int sock_send(int sock, void *ptr, size_t len, copy_context_t *copy_context) {
-   double t0 = cliser_profile_seconds();
-   int ret = send(sock, ptr, len, 0);
-   copy_context->tx.system_seconds += (cliser_profile_seconds() - t0);
-   copy_context->tx.num_bytes += len;
-   copy_context->tx.num_system_calls++;
-   return ret;
+char* sock_address(int sock) {
+   socklen_t len = sizeof(struct sockaddr_in);
+   struct sockaddr_in addr;
+   getpeername(sock, (struct sockaddr*)&addr, &len);
+   char *ip = inet_ntoa(((struct sockaddr_in*)&addr)->sin_addr);
+   return ip;
 }
 
-static int sock_recv(int sock, void *ptr, size_t len, copy_context_t *copy_context) {
-   int rem = len;
+int cliser_server_client_address(lua_State *L) {
+   server_client_t *server_client = (server_client_t *)lua_touserdata(L, 1);
+   lua_pushstring(L, sock_address(server_client->client->sock));
+   return 1;
+}
+
+static size_t sock_send(int sock, void *ptr, size_t len, copy_context_t *copy_context) {
+   size_t rem = len;
    while (rem > 0) {
       double t0 = cliser_profile_seconds();
-      int ret = recv(sock, ptr, rem, 0);
+      ssize_t ret = send(sock, ptr, rem, 0);
+      copy_context->tx.system_seconds += (cliser_profile_seconds() - t0);
+      copy_context->tx.num_system_calls++;
+      if (ret < 0) {
+         return 0;
+      }
+      rem -= (size_t)ret;
+      copy_context->tx.num_bytes += ret;
+      ptr = ((uint8_t *)ptr) + ret;
+   }
+   return len;
+}
+
+static size_t sock_recv(int sock, void *ptr, size_t len, copy_context_t *copy_context) {
+   size_t rem = len;
+   while (rem > 0) {
+      double t0 = cliser_profile_seconds();
+      ssize_t ret = recv(sock, ptr, rem, 0);
       copy_context->rx.system_seconds += (cliser_profile_seconds() - t0);
       copy_context->rx.num_system_calls++;
-      if (ret <= 0) return ret;
-      rem -= ret;
+      if (ret < 0) {
+         return 0;
+      }
+      rem -= (size_t)ret;
       copy_context->rx.num_bytes += ret;
       ptr = ((uint8_t *)ptr) + ret;
    }
@@ -540,6 +597,9 @@ static int sock_send_msg(lua_State *L, int index, int sock, ringbuffer_t *rb, co
 static int sock_recv_msg(lua_State *L, int sock, ringbuffer_t *rb, copy_context_t *copy_context) {
    size_t len;
    int ret = sock_recv(sock, &len, sizeof(len), copy_context);
+   if (len == LEN_INVALID) {
+      return LUA_HANDLE_ERROR_STR(L, "remote peer disconnected\n");
+   }
    if (ret < 0) return LUA_HANDLE_ERROR(L, errno);
    if (ret != sizeof(len)) return LUA_HANDLE_ERROR_STR(L, "failed to recv the correct number of bytes");
    if (len > SEND_RECV_SIZE) return LUA_HANDLE_ERROR_STR(L, "message size is too large");
