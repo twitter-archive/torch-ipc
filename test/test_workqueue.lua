@@ -223,6 +223,38 @@ test {
       local final = m:join()
       assert(final == expected)
    end,
+
+   testAnon = function()
+      local q = ipc.workqueue()
+      local m = ipc.mutex()
+      local w = ipc.map(1, function(q, m)
+         local data = q:read()
+         q:write(data+1)
+         q:read()
+         m:barrier(2)
+         q:write(true)
+      end, q, m)
+
+      q:write(0)
+      assert(q:read() == 1)
+      q:write(false)
+      q:close()
+      q = nil
+      m:barrier(2)
+      w:join()
+   end,
+
+   testCheckCreator = function()
+      local q, creator = ipc.workqueue('test name')
+      assert(creator == 1)
+      local w = ipc.map(1, function()
+         local ipc = require 'libipc'
+         local q, creator = ipc.workqueue('test name')
+         q:write(creator)
+      end)
+      assert(q:read() == 0)
+      w:join()
+   end,
 }
 
 q:write(nil)

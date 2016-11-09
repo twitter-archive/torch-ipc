@@ -27,17 +27,14 @@ typedef struct queue_t {
 typedef struct workqueue_t {
    struct workqueue_t *next;
    struct workqueue_t *prev;
-   uint32_t refcount;
+   int refcount;
+   size_t size_increment;
    const char *name;
    queue_t questions;
    queue_t answers;
    pthread_t owner_thread;
    pthread_mutex_t mutex;
 } workqueue_t;
-
-typedef struct context_t {
-   workqueue_t *workqueue;
-} context_t;
 
 static pthread_once_t workqueue_once = PTHREAD_ONCE_INIT;
 static pthread_mutex_t workqueue_mutex;
@@ -56,6 +53,8 @@ static void workqueue_one_time_init() {
 }
 
 static void workqueue_insert(workqueue_t *workqueue) {
+   if (workqueue->name == NULL)
+      return;
    if (workqueue_head) {
       workqueue_head->prev = workqueue;
       workqueue->next = workqueue_head;
@@ -64,6 +63,8 @@ static void workqueue_insert(workqueue_t *workqueue) {
 }
 
 static void workqueue_remove(workqueue_t *workqueue) {
+   if (workqueue->name == NULL)
+      return;
    if (workqueue_head == workqueue) {
       workqueue_head = workqueue->next;
    }
@@ -76,12 +77,14 @@ static void workqueue_remove(workqueue_t *workqueue) {
 }
 
 static workqueue_t *workqueue_find(const char *name) {
+   if (name == NULL)
+      return NULL;
    workqueue_t *workqueue = workqueue_head;
    while (workqueue && strcmp(workqueue->name, name) != 0) {
       workqueue = workqueue->next;
    }
    if (workqueue) {
-      workqueue->refcount++;
+      THAtomicIncrementRef(&workqueue->refcount);
    }
    return workqueue;
 }
@@ -109,14 +112,21 @@ static void workqueue_destroy_queue(queue_t *queue) {
 
 int workqueue_open(lua_State *L) {
    workqueue_one_time_init();
-   const char *name = luaL_checkstring(L, 1);
+   const char *name = luaL_optlstring(L, 1, NULL, NULL);
    size_t size = luaL_optnumber(L, 2, DEFAULT_WORKQUEUE_SIZE);
+   size_t size_increment = luaL_optnumber(L, 3, size);
    pthread_mutex_lock(&workqueue_mutex);
    workqueue_t *workqueue = workqueue_find(name);
+   int creator = 0;
    if (!workqueue) {
+      creator = 1;
       workqueue = (workqueue_t *)calloc(1, sizeof(workqueue_t));
       workqueue->refcount = 1;
-      workqueue->name = strdup(name);
+      workqueue->size_increment = size_increment;
+      if (name == NULL)
+         workqueue->name = NULL;
+      else
+         workqueue->name = strdup(name);
       workqueue_init_queue(&workqueue->questions, size);
       workqueue_init_queue(&workqueue->answers, size);
       workqueue->owner_thread = pthread_self();
@@ -127,32 +137,15 @@ int workqueue_open(lua_State *L) {
       workqueue_insert(workqueue);
    }
    pthread_mutex_unlock(&workqueue_mutex);
-   context_t *context = (context_t *)lua_newuserdata(L, sizeof(context_t));
-   context->workqueue = workqueue;
+   workqueue_t** ud = (workqueue_t **)lua_newuserdata(L, sizeof(workqueue_t*));
+   *ud = workqueue;
    luaL_getmetatable(L, "ipc.workqueue");
    lua_setmetatable(L, -2);
-   return 1;
+   lua_pushinteger(L, creator);
+   return 2;
 }
 
-int workqueue_close(lua_State *L) {
-   context_t *context = (context_t *)lua_touserdata(L, 1);
-   workqueue_t *workqueue = context->workqueue;
-   if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue has already been closed");
-   pthread_mutex_lock(&workqueue_mutex);
-   workqueue->refcount--;
-   if (workqueue->refcount == 0) {
-      workqueue_remove(workqueue);
-      workqueue_destroy_queue(&workqueue->questions);
-      workqueue_destroy_queue(&workqueue->answers);
-      pthread_mutex_destroy(&workqueue->mutex);
-      free((void *)workqueue->name);
-   }
-   pthread_mutex_unlock(&workqueue_mutex);
-   context->workqueue = NULL;
-   return 0;
-}
-
-static int workqueue_queue_read(lua_State *L, queue_t *queue, int doNotBlock) {
+int workqueue_queue_read(lua_State *L, queue_t *queue, int doNotBlock) {
    pthread_mutex_lock(&queue->mutex);
    while (1) {
       if (queue->num_items) {
@@ -175,8 +168,7 @@ static int workqueue_queue_read(lua_State *L, queue_t *queue, int doNotBlock) {
 }
 
 int workqueue_read(lua_State *L) {
-   context_t *context = (context_t *)lua_touserdata(L, 1);
-   workqueue_t *workqueue = context->workqueue;
+   workqueue_t *workqueue = *(workqueue_t **)lua_touserdata(L, 1);
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    int doNotBlock = luaT_optboolean(L, 2, 0);
    if (workqueue->owner_thread == pthread_self()) {
@@ -186,9 +178,10 @@ int workqueue_read(lua_State *L) {
    }
 }
 
-static int workqueue_queue_write(lua_State *L, int index, queue_t *queue, int upval) {
+static int workqueue_queue_write(lua_State *L, int index, queue_t *queue, size_t size_increment, int upval) {
    pthread_mutex_lock(&queue->mutex);
-   while (index <= lua_gettop(L)) {
+   int top = lua_gettop(L);
+   while (index <= top) {
       ringbuffer_push_write_pos(queue->rb);
       int ret = rb_save(L, index, queue->rb, 0, upval);
       if (ret == -ENOMEM) {
@@ -199,7 +192,7 @@ static int workqueue_queue_write(lua_State *L, int index, queue_t *queue, int up
          } else
 #endif
          {
-            ringbuffer_grow_by(queue->rb, DEFAULT_WORKQUEUE_SIZE);
+            ringbuffer_grow_by(queue->rb, size_increment);
 #if WORKQUEUE_VERBOSE
             fprintf(stderr, "INFO: ipc.workqueue grew to %zu bytes\n", queue->rb->cb);
 #endif
@@ -219,31 +212,27 @@ static int workqueue_queue_write(lua_State *L, int index, queue_t *queue, int up
 }
 
 int workqueue_write(lua_State *L) {
-   context_t *context = (context_t *)lua_touserdata(L, 1);
-   workqueue_t *workqueue = context->workqueue;
+   workqueue_t *workqueue = *(workqueue_t **)lua_touserdata(L, 1);
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    if (workqueue->owner_thread == pthread_self()) {
-      return workqueue_queue_write(L, 2, &workqueue->questions, 0);
+      return workqueue_queue_write(L, 2, &workqueue->questions, workqueue->size_increment, 0);
    } else {
-      return workqueue_queue_write(L, 2, &workqueue->answers, 0);
+      return workqueue_queue_write(L, 2, &workqueue->answers, workqueue->size_increment, 0);
    }
 }
 
 int workqueue_writeup(lua_State *L) {
-   context_t *context = (context_t *)lua_touserdata(L, 1);
-   workqueue_t *workqueue = context->workqueue;
+   workqueue_t *workqueue = *(workqueue_t **)lua_touserdata(L, 1);
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    if (workqueue->owner_thread == pthread_self()) {
-      return workqueue_queue_write(L, 2, &workqueue->questions, 1);
+      return workqueue_queue_write(L, 2, &workqueue->questions, workqueue->size_increment, 1);
    } else {
-      return workqueue_queue_write(L, 2, &workqueue->answers, 1);
+      return workqueue_queue_write(L, 2, &workqueue->answers, workqueue->size_increment, 1);
    }
 }
 
-
 int workqueue_drain(lua_State *L) {
-   context_t *context = (context_t *)lua_touserdata(L, 1);
-   workqueue_t *workqueue = context->workqueue;
+   workqueue_t *workqueue = *(workqueue_t **)lua_touserdata(L, 1);
    if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
    if (workqueue->owner_thread != pthread_self()) return LUA_HANDLE_ERROR_STR(L, "workqueue drain is only available on the owner thread");
    pthread_mutex_lock(&workqueue->questions.mutex);
@@ -255,4 +244,49 @@ int workqueue_drain(lua_State *L) {
    }
    pthread_mutex_unlock(&workqueue->answers.mutex);
    return 0;
+}
+
+int workqueue_close(lua_State *L) {
+   workqueue_t **ud = (workqueue_t **)lua_touserdata(L, 1);
+   workqueue_t *workqueue = *ud;
+   if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is already closed");
+   pthread_mutex_lock(&workqueue_mutex);
+   if (THAtomicDecrementRef(&workqueue->refcount)) {
+      workqueue_remove(workqueue);
+      workqueue_destroy_queue(&workqueue->questions);
+      workqueue_destroy_queue(&workqueue->answers);
+      pthread_mutex_destroy(&workqueue->mutex);
+      free((void *)workqueue->name);
+      workqueue->name = NULL;
+      free(workqueue);
+   }
+   *ud = NULL;
+   pthread_mutex_unlock(&workqueue_mutex);
+   return 0;
+}
+
+int workqueue_gc(lua_State *L) {
+   pthread_mutex_lock(&workqueue_mutex);
+   workqueue_t *workqueue = *(workqueue_t **)lua_touserdata(L, 1);
+   if (workqueue) {
+      workqueue_close(L);
+   }
+   pthread_mutex_unlock(&workqueue_mutex);
+   return 0;
+}
+
+int workqueue_retain(lua_State *L) {
+   workqueue_t *workqueue = *(workqueue_t **)lua_touserdata(L, 1);
+   if (!workqueue) return LUA_HANDLE_ERROR_STR(L, "workqueue is not open");
+   if (workqueue->name == NULL) {
+      pthread_mutex_lock(&workqueue_mutex);
+      THAtomicIncrementRef(&workqueue->refcount);
+      pthread_mutex_unlock(&workqueue_mutex);
+   }
+   return 0;
+}
+
+int workqueue_metatablename(lua_State *L) {
+   lua_pushstring(L, "ipc.workqueue");
+   return 1;
 }

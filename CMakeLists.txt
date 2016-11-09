@@ -13,7 +13,7 @@ ENDIF ()
 
 SET(BUILD_STATIC YES) # makes sure static targets are enabled in ADD_TORCH_PACKAGE
 
-SET(CMAKE_C_FLAGS "--std=c99 -pedantic -Werror -Wall -Wextra -Wno-unused-function -D_GNU_SOURCE ${CMAKE_C_FLAGS}")
+SET(CMAKE_C_FLAGS "-std=c11 -pedantic -Werror -Wall -Wextra -Wno-unused-function -D_GNU_SOURCE ${CMAKE_C_FLAGS}")
 SET(src
    src/ipc.c
    src/workqueue.c
@@ -24,6 +24,7 @@ SET(src
    src/spawn.c
    src/flock.c
    src/mutex.c
+   src/sharedtable.c
 )
 SET(luasrc
    lua/Tree.lua
@@ -43,6 +44,7 @@ SET(luasrc
    test/test_Tree.lua
    test/test_workqueue.lua
    test/test_mutex.lua
+   test/test_sharedtable.lua
 )
 
 ADD_TORCH_PACKAGE(ipc "${src}" "${luasrc}" "A set of primitives for ipc computation in Torch")

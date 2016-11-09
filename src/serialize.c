@@ -9,8 +9,14 @@
 #define RB_WRITE(L, rb, in, cb) \
    { if (ringbuffer_write((rb), (in), (cb)) != (cb)) return -ENOMEM; }
 
+#define RB_WRITE_POP(L, rb, in, cb, n) \
+   { if (ringbuffer_write((rb), (in), (cb)) != (cb)) { lua_pop((L), (n)); return -ENOMEM; }}
+
 #define RB_READ(L, rb, out, cb) \
    { if (ringbuffer_read((rb), (out), (cb)) != (cb)) return -ENOMEM; }
+
+#define RB_READ_POP(L, rb, out, cb, n) \
+   { if (ringbuffer_read((rb), (out), (cb)) != (cb)) { lua_pop((L), (n)); return -ENOMEM; }}
 
 #define MIN(a, b) (a) < (b) ? (a) : (b)
 #define CHUNK_SIZE (8192)
@@ -52,6 +58,12 @@ static const char *rb_lua_reader(lua_State *L, void *param, size_t *size) {
    return NULL;
 }
 
+inline static void rb_stackCheck(lua_State *L, int startsize, const char* loc) {
+   if (lua_gettop(L) != startsize) {
+      luaL_error(L, "Stack wasn't correctly reset in %s\n", loc);
+   }
+}
+
 int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
    char type = lua_type(L, index);
    switch (type) {
@@ -90,6 +102,7 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
          return 0;
       }
       case LUA_TTABLE: {
+         int startsize = lua_gettop(L);
          RB_WRITE(L, rb, &type, sizeof(char));
          int top = lua_gettop(L);
          int ret;
@@ -99,17 +112,19 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
             ret = rb_save(L, top + 1, rb, oop, upval); // key
             if (ret) {
                lua_pop(L, 2);
+               rb_stackCheck(L, startsize, "write table key");
                return ret;
             }
             ret = rb_save(L, top + 2, rb, oop, upval); // value
             if (ret) {
                lua_pop(L, 2);
+               rb_stackCheck(L, startsize, "write table key");
                return ret;
             }
             lua_pop(L, 1);
          }
          type = LUA_TNIL;
-         RB_WRITE(L, rb, &type, sizeof(char)); // breaks the read loop
+         RB_WRITE(L, rb, &type, sizeof(char)); // nil breaks the read loop
 
          // the typename identifies the metatable
          const char *str = luaT_typename(L, index);
@@ -124,12 +139,13 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
          size_t str_len = strlen(str);
          RB_WRITE(L, rb, &str_len, sizeof(str_len));
          RB_WRITE(L, rb, str, str_len);
+         rb_stackCheck(L, startsize, "write table return");
          return 0;
       }
       case LUA_TFUNCTION: {
-
+         int startsize = lua_gettop(L);
          RB_WRITE(L, rb, &type, sizeof(char));
-         if (index != lua_gettop(L)) {
+         if (index != startsize) {
             lua_pushvalue(L, index);
          }
          lua_Debug ar;
@@ -171,6 +187,8 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
             // write upvalue table
             int ret = rb_save(L, lua_gettop(L), rb, oop, upval);
             if (ret) {
+               lua_pop(L, 1);
+               rb_stackCheck(L, startsize, "write function upvalue");
                return ret;
             }
             lua_pop(L, 1);
@@ -181,7 +199,7 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
          if (index != lua_gettop(L)) {
             lua_pop(L, 1);
          }
-
+         rb_stackCheck(L, startsize, "write function return");
          return 0;
       }
       case LUA_TUSERDATA: {

@@ -9,6 +9,7 @@ int cliser_server_clients(lua_State *L);
 int cliser_server_tag(lua_State *L);
 int cliser_server_id(lua_State *L);
 int cliser_server_client_close(lua_State *L);
+int cliser_server_client_address(lua_State *L);
 int cliser_server_broadcast(lua_State *L);
 int cliser_server_recv_any(lua_State *L);
 int cliser_server_send(lua_State *L);
