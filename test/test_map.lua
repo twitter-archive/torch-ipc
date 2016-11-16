@@ -56,6 +56,36 @@ test {
       test.mustBeTrue(type(msg) == 'string', 'expected the error message to be a string')
    end,
 
+   testUpvalueError = function()
+      Global4523463456345 = 32 -- set a global
+      local function envIsSet()
+         return Global4523463456345 == nil and 56
+      end
+      local name, value = debug.getupvalue(envIsSet, 1)
+      local res = ipc.map(1, envIsSet):join()
+      test.mustBeTrue(res == 56)
+
+      local function envIsSet2()
+         Global4523463456345 = 46
+         local function envIsSet()
+            return Global4523463456345
+         end
+         return envIsSet()
+      end
+      local res = ipc.map(1, envIsSet2):join()
+      test.mustBeTrue(res == 46)
+
+      Global4523463456345 = nil
+
+      local i,j=1,2
+      local function closure()
+         return i+j+1
+      end
+      local ok, msg = pcall(function() ipc.map(1, closure):join() end)
+      test.mustBeTrue(ok == false, 'expected the map to fail')
+      test.mustBeTrue(type(msg) == 'string', 'expected the error message to be a string')
+   end,
+
    testCheckErrors = function()
       local m = ipc.map(2, function(idx)
          local sys = require 'sys'

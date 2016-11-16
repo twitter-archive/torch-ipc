@@ -154,7 +154,7 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
          if (ar.what[0] != 'L') {
              luaL_error(L, "attempt to persist a C function '%s'", ar.name);
          }
-         
+
          // this returns different things under LuaJIT vs Lua
 #if LUA_VERSION_NUM >= 503
          lua_dump(L, rb_lua_writer, rb, 0);
@@ -165,16 +165,29 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
          size_t str_len = 0;
          RB_WRITE(L, rb, &str_len, sizeof(size_t)); // zero-terminated
 
-         // does the serialization accept upvalues?
-         RB_WRITE(L, rb, &upval, sizeof(int)); 
-         
+         const char *name; // will hold the name of an upvalue
+
+         int env = 0; // true if function has only one upvalue and it is _ENV
+         if ((upval == 0) && (ar.nups == 1)) {
+            name = lua_getupvalue(L, -1, 1);
+            if (strcmp(name, "_ENV") == 0) {
+               env = 1;
+            }
+            lua_pop(L, 1);
+            // since it is only _ENV (which is used for global variables), go through the motions of an (upval=1)
+            RB_WRITE(L, rb, &env, sizeof(int));
+         } else {
+            // does the serialization accept upvalues?
+            RB_WRITE(L, rb, &upval, sizeof(int));
+         }
+
          // upvalues
-         if (upval == 1) {
+         if ((upval == 1) || (env == 1)) {
             lua_newtable(L);
             int envIdx = -1;
             for (int i=1; i <= ar.nups; i++) {
-               const char *name = lua_getupvalue(L, -2, i);
-               if (strcmp(name, "_ENV") != 0) { 
+               name = lua_getupvalue(L, -2, i);
+               if (strcmp(name, "_ENV") != 0) {
                   lua_rawseti(L, -2, i);
                } else { // ignore _ENV as we assume that this is the global _G variable
                   lua_pop(L, 1);
@@ -192,8 +205,11 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
                return ret;
             }
             lua_pop(L, 1);
-         } else if (ar.nups > 1) {
-            luaL_error(L, "attempt to serialize a funciton with upvalues (i.e. a closure). Use ipc.workqueue.writeup().");
+         } else if (ar.nups > 0) {
+            name = lua_getupvalue(L, -1, 1);
+            lua_pop(L, 1);
+            luaL_error(L, "Attempt to serialize closure '%s:%d' with %d upvalues; first is: '%s'.\n"
+                          "Consider using ipc.workqueue.writeup() instead.", ar.short_src, ar.linedefined, ar.nups, name);
          }
 
          if (index != lua_gettop(L)) {
@@ -282,7 +298,7 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
          RB_READ(L, rb, str, str_len);
          str[str_len] = 0;
 
-         if (str_len > 0) { 
+         if (str_len > 0) {
             luaL_getmetatable(L, str);
             lua_setmetatable(L, -2);
          }
@@ -329,7 +345,7 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
                lua_setupvalue(L, -4, n);
             }
 
-            lua_pop(L, 1); 
+            lua_pop(L, 1);
          }
 
          return 1;

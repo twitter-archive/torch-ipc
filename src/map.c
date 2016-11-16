@@ -64,7 +64,7 @@ static int start_thread(void* arg, map_thread_t **map_thread, lua_State **L, int
    }
    (*map_thread)->ret = lua_pcall(*L, 0, 0, 0);
    if ((*map_thread)->ret) {
-      fprintf(stderr, "WARN: ipc.%s thread pcall failed: %s\n", name, lua_tostring(*L, -1));
+      fprintf(stderr, "WARN1: ipc.%s thread pcall failed: %s\n", name, lua_tostring(*L, -1));
       return 0;
    } else {
       return 1;
@@ -92,7 +92,7 @@ static void core_thread(map_thread_t *map_thread, lua_State *L, const char *name
    }
    map_thread->ret = lua_pcall(L, i - 1, LUA_MULTRET, 0);
    if (map_thread->ret) {
-      fprintf(stderr, "WARN: ipc.%s thread pcall failed: %s\n", name, lua_tostring(L, -1));
+      fprintf(stderr, "WARN2: ipc.%s thread pcall failed: %s\n", name, lua_tostring(L, -1));
    }
 }
 
