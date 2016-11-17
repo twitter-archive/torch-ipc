@@ -118,7 +118,7 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
             ret = rb_save(L, top + 2, rb, oop, upval); // value
             if (ret) {
                lua_pop(L, 2);
-               rb_stackCheck(L, startsize, "write table key");
+               rb_stackCheck(L, startsize, "write table value");
                return ret;
             }
             lua_pop(L, 1);
@@ -145,8 +145,10 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
       case LUA_TFUNCTION: {
          int startsize = lua_gettop(L);
          RB_WRITE(L, rb, &type, sizeof(char));
+         int pushed = 0;
          if (index != startsize) {
             lua_pushvalue(L, index);
+            pushed = 1;
          }
          lua_Debug ar;
          lua_pushvalue(L, -1);
@@ -154,16 +156,22 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
          if (ar.what[0] != 'L') {
              luaL_error(L, "attempt to persist a C function '%s'", ar.name);
          }
+         rb_stackCheck(L, startsize+pushed, "get debug");
 
          // this returns different things under LuaJIT vs Lua
 #if LUA_VERSION_NUM >= 503
-         lua_dump(L, rb_lua_writer, rb, 0);
+         int ret = lua_dump(L, rb_lua_writer, rb, 0);
 #else
-         lua_dump(L, rb_lua_writer, rb);
+         int ret = lua_dump(L, rb_lua_writer, rb);
 #endif
+         if (ret){
+            lua_pop(L, pushed);
+            rb_stackCheck(L, startsize, "lua_dump write");
+            return ret;
+         }
 
          size_t str_len = 0;
-         RB_WRITE(L, rb, &str_len, sizeof(size_t)); // zero-terminated
+         RB_WRITE_POP(L, rb, &str_len, sizeof(size_t), pushed); // zero-terminated
 
          const char *name; // will hold the name of an upvalue
 
@@ -175,10 +183,11 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
             }
             lua_pop(L, 1);
             // since it is only _ENV (which is used for global variables), go through the motions of an (upval=1)
-            RB_WRITE(L, rb, &env, sizeof(int));
+            rb_stackCheck(L, startsize+pushed, "write _ENV");
+            RB_WRITE_POP(L, rb, &env, sizeof(int), pushed);
          } else {
             // does the serialization accept upvalues?
-            RB_WRITE(L, rb, &upval, sizeof(int));
+            RB_WRITE_POP(L, rb, &upval, sizeof(int), pushed);
          }
 
          // upvalues
@@ -195,13 +204,13 @@ int rb_save(lua_State *L, int index, ringbuffer_t *rb, int oop, int upval) {
                }
             }
             // write upvalue index of _ENV
-            RB_WRITE(L, rb, &envIdx, sizeof(int));
+            RB_WRITE_POP(L, rb, &envIdx, sizeof(int), 1+pushed);
 
             // write upvalue table
             int ret = rb_save(L, lua_gettop(L), rb, oop, upval);
             if (ret) {
                lua_pop(L, 1);
-               rb_stackCheck(L, startsize, "write function upvalue");
+               rb_stackCheck(L, startsize+pushed, "write function upvalue");
                return ret;
             }
             lua_pop(L, 1);
@@ -257,6 +266,7 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
    int ret;
    chunked_t chunked;
    void *ptr, **pptr;
+   int startsize;
 
    if (!lua_checkstack(L, 1)) return -ENOMEM;
    RB_READ(L, rb, &type, sizeof(type));
@@ -284,6 +294,7 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
          lua_pushlstring(L, str, str_len);
          return 1;
       case LUA_TTABLE:
+         startsize = lua_gettop(L);
          lua_newtable(L);
          while (1) {
             ret = rb_load_rcsv(L, rb, 1); // key
@@ -303,10 +314,12 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
             lua_setmetatable(L, -2);
          }
 
+         rb_stackCheck(L, startsize+1, "error loading table");
          return 1;
       case LUA_TFUNCTION:
          chunked.rb = rb;
          chunked.read_last = 0;
+         startsize = lua_gettop(L);
 #if !defined(LUA_VERSION_NUM) || LUA_VERSION_NUM < 502
          ret = lua_load(L, rb_lua_reader, &chunked, NULL);
 #else
@@ -318,6 +331,7 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
          if (!chunked.read_last) {
             RB_READ(L, rb, &str_len, sizeof(str_len));
          }
+         rb_stackCheck(L, startsize+1, "error loading function");
 
          // are we expecting upvalues?
          int upval;
@@ -346,6 +360,7 @@ static int rb_load_rcsv(lua_State *L, ringbuffer_t *rb, int is_key) {
             }
 
             lua_pop(L, 1);
+            rb_stackCheck(L, startsize+1, "error loading upvalues");
          }
 
          return 1;
