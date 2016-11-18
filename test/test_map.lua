@@ -142,4 +142,31 @@ test {
          return data
       end):join()
    end,
+
+   testFunctionMapId = function()
+      Global4523463456345 = 1
+      Globalsadg234523 = 2
+
+      local function run(opt, mapid)
+         assert(torch.type(opt) == 'table')
+         assert(torch.type(mapid) == 'number')
+         -- do something with globals
+         return (Global4523463456345 or 3) + (Globalsadg234523 or 5)
+      end
+
+      local largetable = {}
+      for i=1,1000 do
+         largetable["asdfasdfa"..i] = i
+      end
+      local mutex = ipc.mutex()
+      ipc.map(3, run, {
+         asts = largetable,
+         verbose = 3232,
+         mode = 'string',
+         mutex = mutex,
+         barrier = true,
+         partitions = torch.Tensor(10),
+         reportEvery = 200,
+      }):join()
+   end,
 }

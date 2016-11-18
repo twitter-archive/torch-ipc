@@ -31,8 +31,15 @@ ThreadInitFunc _ipc_static_init_thread = NULL;
 static int rb_save_with_growth(lua_State *L, int index, struct ringbuffer_t *rb) {
    while (1) {
       ringbuffer_push_write_pos(rb);
+      int startsize = lua_gettop(L);
       int ret = rb_save(L, index, rb, 0, 0); // map doesn't support upvalues
       if (ret == -ENOMEM) {
+         int top = lua_gettop(L);
+         if (top > startsize) {
+            lua_pop(L, top-startsize);
+         } else if (top < startsize) {
+            LUA_HANDLE_ERROR_STR(L, "too many items popped during serialization");
+         }
          ringbuffer_pop_write_pos(rb);
          ringbuffer_grow_by(rb, MAX_ARG_SIZE);
       } else {
@@ -87,7 +94,10 @@ static void end_thread(map_thread_t *map_thread, lua_State *L, int top, const ch
 static void core_thread(map_thread_t *map_thread, lua_State *L, const char *name) {
    int i = 0;
    while (ringbuffer_peek(map_thread->rb)) {
-      rb_load(L, map_thread->rb);
+      int ret = rb_load(L, map_thread->rb);
+      if (ret < 0) {
+         LUA_HANDLE_ERROR_STR(L, "thread Lua data wasn't loaded correctly");
+      };
       i++;
    }
    map_thread->ret = lua_pcall(L, i - 1, LUA_MULTRET, 0);
@@ -114,11 +124,11 @@ static int core_map(lua_State *L, void* (*func)(void*)) {
    int k = lua_gettop(L);
    for (uint32_t i = 0; i < num_threads; i++) {
       threads[i].rb = ringbuffer_create(MAX_ARG_SIZE);
-      for (int j = 2; j <= k; j++) {
+      for (int j = 2; j <= k; j++) { // save function and arguments
          int ret = rb_save_with_growth(L, j, threads[i].rb);
          if (ret) return LUA_HANDLE_ERROR(L, ret);
       }
-      lua_pushinteger(L, i + 1);
+      lua_pushinteger(L, i + 1); // mapid is the last argument (id of the thread)
       int ret = rb_save_with_growth(L, k + 1, threads[i].rb);
       if (ret) return LUA_HANDLE_ERROR(L, ret);
       lua_pop(L, 1);

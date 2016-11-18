@@ -18,7 +18,7 @@
 typedef struct sharedtable_t {
    struct ringbuffer_t* rb;
    pthread_mutex_t mutex;
-   lua_State* L;
+   lua_State* L; // the shared table is stored in its own lua_State
    size_t size_increment;
    int ref_count;
 } sharedtable_t;
