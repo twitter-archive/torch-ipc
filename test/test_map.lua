@@ -168,5 +168,8 @@ test {
          partitions = torch.Tensor(10),
          reportEvery = 200,
       }):join()
+
+      Global4523463456345 = nil
+      Globalsadg234523 = nil
    end,
 }
