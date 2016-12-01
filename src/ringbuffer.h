@@ -24,5 +24,6 @@ void ringbuffer_push_write_pos(ringbuffer_t* rb);
 void ringbuffer_pop_write_pos(ringbuffer_t* rb);
 void ringbuffer_reset_read_pos(ringbuffer_t* rb);
 void* ringbuffer_buf_ptr(ringbuffer_t* rb);
+ringbuffer_t* ringbuffer_clone(ringbuffer_t* rb);
 
 #endif

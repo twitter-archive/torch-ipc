@@ -115,7 +115,8 @@ So if you dont see any `_ENV` in your code, you should be fine.
 
 The __:write()__ and __:writeup()__ methods can be used to write multiple objects into the queue at once.
 For example, `q:write(1, 2, 3)` is equivalent to `q:write(1);q:write(2);q:write(3)`.
-As such, each argument passed to __:write()__  and __:writeup()__ will require their own `q:read()` to be read.
+As such, each argument passed to __:write()__  and __:writeup()__
+will require their own `q:read()` to be read.
 
 
 A more concrete example of combining [ipc.map](map.md) and [ipc.workqueue](workqueue.md)

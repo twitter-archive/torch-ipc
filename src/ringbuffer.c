@@ -82,6 +82,7 @@ size_t ringbuffer_read(ringbuffer_t* rb, void* out, size_t cb) {
    return i;
 }
 
+
 size_t ringbuffer_peek(struct ringbuffer_t* rb) {
    return rb->rcb;
 }
@@ -102,4 +103,11 @@ void ringbuffer_reset_read_pos(struct ringbuffer_t* rb) {
 
 void* ringbuffer_buf_ptr(struct ringbuffer_t* rb) {
    return rb->buf;
+}
+
+// clone everthing except buf (the buf is shared)
+ringbuffer_t* ringbuffer_clone(ringbuffer_t* rb) {
+   ringbuffer_t* crb = malloc(sizeof(ringbuffer_t));
+   memcpy(crb, rb, sizeof(ringbuffer_t));
+   return crb;
 }
