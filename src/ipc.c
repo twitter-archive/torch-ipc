@@ -14,6 +14,7 @@
 #include "flock.h"
 #include "mutex.h"
 #include "sharedtable.h"
+#include "marshal.h"
 
 int ipc_getpid(lua_State *L) {
    pid_t pid = getpid();
@@ -93,6 +94,7 @@ static const struct luaL_Reg ipc_routines[] = {
    {"mutex", mutex_create},
    {"sharedtable", sharedtable_create},
    {"sharedtable_size", sharedtable_size},
+   {"marshal", marshal_open},
    {"isDevel", ipc_is_devel},
    {NULL, NULL}
 };
@@ -184,6 +186,15 @@ static const struct luaL_Reg sharedtable_routines[] = {
    {NULL, NULL}
 };
 
+static const struct luaL_Reg marshal_routines[] = {
+   {"close", marshal_close},
+   {"read", marshal_read},
+   {"retain", marshal_retain},
+   {"metatablename", marshal_metatablename},
+   {"__gc", marshal_gc},
+   {NULL, NULL}
+};
+
 DLL_EXPORT int luaopen_libipc(lua_State *L) {
    signal(SIGPIPE, SIG_IGN);  // don't die for SIGPIPE
    luaL_newmetatable(L, "ipc.workqueue");
@@ -226,6 +237,11 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, mutex_routines, 0);
+   luaL_newmetatable(L, "ipc.marshal");
+   lua_pushstring(L, "__index");
+   lua_pushvalue(L, -2);
+   lua_settable(L, -3);
+   luaT_setfuncs(L, marshal_routines, 0);
    luaL_newmetatable(L, "ipc.sharedtable");
    luaT_setfuncs(L, sharedtable_routines, 0);
    Lcliser_CharInit(L);
