@@ -24,7 +24,7 @@ test {
    openReadMultiWriteSameThread = function()
       local c = ipc.channel()
       local data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,}
-      local status = c:write(unpack(data))
+      local status = c:write(table.unpack(data))
       test.mustBeTrue(status == ":open")
       test.mustBeTrue(c:num_items() == 12, 'number of items in channel is incorrect')
       local nonblocking = true
