@@ -278,7 +278,11 @@ test {
    end,
 
    modelParallelism = function()
-      local nn = require 'nn'
+      local success, nn = pcall(function() return require 'nn' end)
+      if not success then
+         -- skip this test if nn is not available
+         return
+      end
       local layerFrameSizes = {20, 10, 5, 1}
       local datasetSize = 10000
 
