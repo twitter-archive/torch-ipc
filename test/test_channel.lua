@@ -228,9 +228,10 @@ test {
       test.mustBeTrue(fromWorkers:drained())
       test.mustBeTrue(fromWorkers:num_items() == 0)
       test.mustBeTrue(#returnedItems == nReturnedItems)
-      local counts = tablex.count_map(
-         returnedItems, function(a, b) return a == b end
-      )
+      local counts = {}
+      for _,x in ipairs(returnedItems) do
+         counts[x] = (counts[x] or 0) + 1
+      end
       for i = 1,nItems do
          test.mustBeTrue(counts[i] == nWorkloadGenerators)
       end
