@@ -11,16 +11,12 @@
 
 #define DEFAULT_CHANNEL_SIZE (16*1024)
 
-#define TOO_TRICKY (0)
 #define CHANNEL_VERBOSE (0)
 
 typedef struct channel_t {
    struct ringbuffer_t* rb;
    pthread_mutex_t mutex;
    pthread_cond_t read_avail_cond;
-#if TOO_TRICKY
-   pthread_cond_t write_avail_cond;
-#endif
    int closed;
    int drained;
    uint32_t num_items;
@@ -37,9 +33,6 @@ static void channel_init_queue(channel_t *channel, size_t size) {
 
    // init condition variables
    pthread_cond_init(&channel->read_avail_cond, NULL);
-#if TOO_TRICKY
-   pthread_cond_init(&channel->write_avail_cond, NULL);
-#endif
 
    // init ring buffer
    channel->rb = ringbuffer_create(size);
@@ -110,9 +103,6 @@ int channel_read(lua_State *L) {
          }
          int ret = rb_load(L, channel->rb);
          channel->num_items--;
-#if TOO_TRICKY
-         pthread_cond_signal(&channel->write_avail_cond);
-#endif
          pthread_mutex_unlock(&channel->mutex);
          if (ret < 0) return LUA_HANDLE_ERROR(L, ret);
          return ret + 1;
@@ -161,17 +151,10 @@ int channel_write(lua_State *L) {
       int ret = rb_save(L, index, channel->rb, 0, upval);
       if (ret == -ENOMEM) {
          ringbuffer_pop_write_pos(channel->rb);
-#if TOO_TRICKY
-         if (ringbuffer_peek(channel->rb)) {
-            pthread_cond_wait(&channel->write_avail_cond, &channel->mutex);
-         } else
-#endif
-         {
-            ringbuffer_grow_by(channel->rb, channel->size_increment);
+         ringbuffer_grow_by(channel->rb, channel->size_increment);
 #if CHANNEL_VERBOSE
-            fprintf(stderr, "INFO: ipc.channel grew to %zu bytes\n", channel->rb->cb);
+         fprintf(stderr, "INFO: ipc.channel grew to %zu bytes\n", channel->rb->cb);
 #endif
-         }
       } else if (ret) {
          ringbuffer_pop_write_pos(channel->rb);
          pthread_mutex_unlock(&channel->mutex);
@@ -203,9 +186,6 @@ int channel_gc(lua_State *L) {
    pthread_mutex_lock(&channel->mutex);
    if (THAtomicDecrementRef(&channel->refcount)) {
       pthread_cond_destroy(&channel->read_avail_cond);
-#if TOO_TRICKY
-      pthread_cond_destroy(&channel->write_avail_cond);
-#endif
       ringbuffer_destroy(channel->rb);
       pthread_mutex_unlock(&channel->mutex);
       pthread_mutex_destroy(&channel->mutex);
