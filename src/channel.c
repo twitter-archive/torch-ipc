@@ -8,14 +8,11 @@
 #include "ringbuffer.h"
 #include "serialize.h"
 #include "error.h"
+#include "channel.h"
 
 #define DEFAULT_CHANNEL_SIZE (16*1024)
 
 #define CHANNEL_VERBOSE (0)
-
-#define STATUS_OPEN ":open"
-#define STATUS_CLOSED ":closed"
-#define STATUS_DRAINED ":drained"
 
 typedef struct channel_t {
    struct ringbuffer_t* rb;
@@ -101,9 +98,9 @@ int channel_read(lua_State *L) {
             pthread_cond_broadcast(&channel->read_avail_cond);
          }
          if (channel->closed) {
-            lua_pushstring(L, STATUS_CLOSED);
+            lua_pushinteger(L, STATUS_CLOSED);
          } else {
-            lua_pushstring(L, STATUS_OPEN);
+            lua_pushinteger(L, STATUS_OPEN);
          }
          int ret = rb_load(L, channel->rb);
          channel->num_items--;
@@ -112,7 +109,7 @@ int channel_read(lua_State *L) {
          return ret + 1;
       } else if (channel->drained) {
          pthread_mutex_unlock(&channel->mutex);
-         lua_pushstring(L, STATUS_DRAINED);
+         lua_pushinteger(L, STATUS_DRAINED);
          return 1;
       } else if (doNotBlock) {
          break;
@@ -121,11 +118,11 @@ int channel_read(lua_State *L) {
       }
    }
    if (channel->drained) {
-      lua_pushstring(L, STATUS_DRAINED);
+      lua_pushinteger(L, STATUS_DRAINED);
    } else if (channel->closed) {
-      lua_pushstring(L, STATUS_CLOSED);
+      lua_pushinteger(L, STATUS_CLOSED);
    } else {
-      lua_pushstring(L, STATUS_OPEN);
+      lua_pushinteger(L, STATUS_OPEN);
    }
    pthread_mutex_unlock(&channel->mutex);
    return 1;
@@ -139,11 +136,11 @@ int channel_write(lua_State *L) {
    if (!channel) return LUA_HANDLE_ERROR_STR(L, "invalid channel");
    pthread_mutex_lock(&channel->mutex);
    if (channel->drained) {
-      lua_pushstring(L, STATUS_DRAINED);
+      lua_pushinteger(L, STATUS_DRAINED);
       pthread_mutex_unlock(&channel->mutex);
       return 1;
    } else if (channel->closed) {
-      lua_pushstring(L, STATUS_CLOSED);
+      lua_pushinteger(L, STATUS_CLOSED);
       pthread_mutex_unlock(&channel->mutex);
       return 1;
    }
@@ -169,7 +166,7 @@ int channel_write(lua_State *L) {
       }
    }
    pthread_cond_signal(&channel->read_avail_cond);
-   lua_pushstring(L, STATUS_OPEN);
+   lua_pushinteger(L, STATUS_OPEN);
    pthread_mutex_unlock(&channel->mutex);
    return 1;
 }

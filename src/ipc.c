@@ -210,6 +210,30 @@ static const struct luaL_Reg channel_routines[] = {
    {NULL, NULL}
 };
 
+static void set_channel_table(lua_State *L) {
+   const char* statusNames[] = {
+      "OPEN", "CLOSED", "DRAINED"
+   };
+   const int statusValues[] = {
+      STATUS_OPEN, STATUS_CLOSED, STATUS_DRAINED
+   };
+   lua_createtable(L, 0, 4);
+   for (int i = 0; i < 3; ++i) {
+      lua_pushstring(L, statusNames[i]);
+      lua_pushinteger(L, statusValues[i]);
+      lua_settable(L, -3);
+   }
+   lua_createtable(L, 0, 1);
+   lua_pushstring(L, "__call");
+   lua_pushcfunction(L, channel_create);
+   lua_settable(L, -3);
+   lua_setmetatable(L, -2);
+   lua_pushstring(L, "channel");
+   lua_pushvalue(L, -2);
+   lua_settable(L, -4);
+   lua_pop(L, 1);
+}
+
 DLL_EXPORT int luaopen_libipc(lua_State *L) {
    signal(SIGPIPE, SIG_IGN);  // don't die for SIGPIPE
    luaL_newmetatable(L, "ipc.workqueue");
@@ -287,5 +311,6 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
 #endif
    lua_newtable(L);
    luaT_setfuncs(L, ipc_routines, 0);
+   set_channel_table(L);
    return 1;
 }

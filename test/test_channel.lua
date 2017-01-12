@@ -2,21 +2,48 @@ local test = require 'regress'
 local ipc = require 'libipc'
 
 test {
+   -- status enums should be set on ipc.channel metatable
+   statusEnumsSet = function()
+      test.mustBeTrue(type(ipc.channel.OPEN) == 'number')
+      test.mustBeTrue(type(ipc.channel.CLOSED) == 'number')
+      test.mustBeTrue(type(ipc.channel.DRAINED) == 'number')
+      test.mustBeTrue(ipc.channel.OPEN ~= ipc.channel.CLOSED)
+      test.mustBeTrue(ipc.channel.CLOSED ~= ipc.channel.DRAINED)
+      local expectedMethods = {
+         'read', 'write', 'num_items', 'close', 'closed', 'drained'
+      }
+      local ch = ipc.channel()
+      for _,x in ipairs(expectedMethods) do
+         test.mustBeTrue(ch[x] ~= nil and type(ch[x]) == 'function')
+      end
+   end,
+
    -- it should be possible to open a channel, write something to it
    -- and read it back within the same thread.
    openReadWriteSameThread = function()
       local c = ipc.channel()
       local data = 10
       local status = c:write(data)
-      test.mustBeTrue(status == ":open")
+      test.mustBeTrue(status == ipc.channel.OPEN)
       test.mustBeTrue(c:num_items() == 1, 'number of items in channel is incorrect')
       local nonblocking = true
       local status, readData = c:read(nonblocking)
-      test.mustBeTrue(status == ":open")
+      test.mustBeTrue(status == ipc.channel.OPEN)
       test.mustBeTrue(c:num_items() == 0, 'number of items in channel is incorrect')
       test.mustBeTrue(
          data == readData,
          'data read from channel ('..readData..') does not match data written to channel ('..data..')'
+      )
+      -- writing nil should work
+      local status = c:write(nil)
+      test.mustBeTrue(status == ipc.channel.OPEN)
+      test.mustBeTrue(c:num_items() == 1, 'number of items in channel is incorrect')
+      local status, readData = c:read(nonblocking)
+      test.mustBeTrue(status == ipc.channel.OPEN)
+      test.mustBeTrue(c:num_items() == 0, 'number of items in channel is incorrect')
+      test.mustBeTrue(
+         nil == readData,
+         'data read from channel does not match data written to channel (nil)'
       )
    end,
 
@@ -26,12 +53,12 @@ test {
       local data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,}
       local unpack = unpack or table.unpack
       local status = c:write(unpack(data))
-      test.mustBeTrue(status == ":open")
+      test.mustBeTrue(status == ipc.channel.OPEN)
       test.mustBeTrue(c:num_items() == 12, 'number of items in channel is incorrect')
       local nonblocking = true
       for i=1,#data do
          local status, readData = c:read(nonblocking)
-         test.mustBeTrue(status == ":open")
+         test.mustBeTrue(status == ipc.channel.OPEN)
          test.mustBeTrue(readData == i)
       end
    end,
@@ -43,19 +70,21 @@ test {
       local items = {true, 10, 'foo'}
       local producer = ipc.map(1, function(c, items)
          local test = require 'regress'
+         local ipc = require 'libipc'
          for _,x in ipairs(items) do
             local status = c:write(x)
-            test.mustBeTrue(status == ":open")
+            test.mustBeTrue(status == ipc.channel.OPEN)
          end
       end, c, items)
       producer:join()
       test.mustBeTrue(c:num_items() == #items, 'number of items in channel is incorrect')
       local consumer = ipc.map(1, function(c, items)
          local test = require 'regress'
+         local ipc = require 'libipc'
          local nonblocking = false
          for i=1,#items do
             local status, item = c:read(nonblocking)
-            test.mustBeTrue(status == ":open")
+            test.mustBeTrue(status == ipc.channel.OPEN)
             test.mustBeTrue(
                items[i] == item,
                'item read from channel ('..tostring(item)..') does not match item written to channel ('..tostring(items[i])..')')
@@ -76,20 +105,20 @@ test {
       -- channel with stuffz
       local c = ipc.channel()
       local status = c:write('foo')
-      test.mustBeTrue(status == ':open')
+      test.mustBeTrue(status == ipc.channel.OPEN)
       test.mustBeTrue(c:num_items() == 1)
       c:close()
       local status = c:write('bar')
-      test.mustBeTrue(status == ':closed')
+      test.mustBeTrue(status == ipc.channel.CLOSED)
       test.mustBeTrue(c:num_items() == 1)
       local status, item = c:read()
-      test.mustBeTrue(status == ':closed')
+      test.mustBeTrue(status == ipc.channel.CLOSED)
       test.mustBeTrue(item == 'foo')
       local status, item = c:read()
-      test.mustBeTrue(status == ':drained')
+      test.mustBeTrue(status == ipc.channel.DRAINED)
       test.mustBeTrue(item == nil)
       local status = c:write('bar')
-      test.mustBeTrue(status == ':drained')
+      test.mustBeTrue(status == ipc.channel.DRAINED)
       test.mustBeTrue(c:num_items() == 0)
    end,
 
@@ -107,12 +136,13 @@ test {
       test.mustBeTrue(ca:num_items() == #items+2, 'number of items in channel is incorrect')
       local echo = ipc.map(1, function(ca)
          local test = require 'regress'
+         local ipc = require 'libipc'
          local nonblocking = false
          local status, cb = ca:read(nonblocking)
-         test.mustBeTrue(status == ":open")
+         test.mustBeTrue(status == ipc.channel.OPEN)
          while true do
             local status, input = ca:read(nonblocking)
-            test.mustBeTrue(status == ":open")
+            test.mustBeTrue(status == ipc.channel.OPEN)
             if input == 'STOP' then
                break
             else
@@ -126,7 +156,7 @@ test {
       for i=1,#items do
          local nonblocking = true
          local status, item = cb:read(nonblocking)
-         test.mustBeTrue(status == ":open")
+         test.mustBeTrue(status == ipc.channel.OPEN)
          test.mustBeTrue(
             items[i] == item,
             'item read from channel ('..tostring(item)..') does not match item written to channel ('..tostring(items[i])..')')
@@ -137,9 +167,10 @@ test {
       local c = ipc.channel()
       local workers = ipc.map(10, function(c)
          local test = require 'regress'
+         local ipc = require 'libipc'
          while true do
             local status, data = c:read(false)
-            if status == ':drained' then
+            if status == ipc.channel.DRAINED then
                break
             else
                test.mustBeTrue(false, 'should not put anything on channel')
@@ -166,6 +197,7 @@ test {
       local nWorkloadGenerators = 10
       local workloadGenerators = ipc.map(nWorkloadGenerators, function(toWorkqueue, items)
          local test = require 'regress'
+         local ipc = require 'libipc'
          for _,x in ipairs(items) do
             local status = toWorkqueue:write(x)
             -- workload generators expect that the workqueue remains
@@ -173,13 +205,14 @@ test {
             -- items. This does not have to be the case - they could
             -- just stop enqueuing items when they see that the
             -- workqueue has been closed.
-            test.mustBeTrue(status == ':open')
+            test.mustBeTrue(status == ipc.channel.OPEN)
          end
       end, toWorkqueue, items)
       -- multiple threads can act as workers
       local nWorkers = 5
       local workers = ipc.map(nWorkers, function(toWorkqueue, fromWorkers)
          local test = require 'regress'
+         local ipc = require 'libipc'
          while true do
             local nonblocking = false -- use blocking reads to avoid busy-waiting
             local status, item = toWorkqueue:read(nonblocking)
@@ -188,12 +221,12 @@ test {
             -- queue until they either find that the workqueue has
             -- been drained or the results queue has been closed. No
             -- need for control signals.
-            if status == ':drained' then
+            if status == ipc.channel.DRAINED then
                print('worker finishing: toWorkqueue channel drained')
                break
             end
             local status = fromWorkers:write(item)
-            if status ~= ':open' then
+            if status ~= ipc.channel.OPEN then
                print('worker finishing: fromWorkers channel closed')
                break
             end
@@ -219,7 +252,7 @@ test {
       while true do
          local nonblocking = true
          local status, item = fromWorkers:read(nonblocking)
-         if status == ':drained' then
+         if status == ipc.channel.DRAINED then
             break
          else
             table.insert(returnedItems, item)
@@ -250,10 +283,11 @@ test {
          c:close()
       end, c, npings)
       local ponger = ipc.map(1, function(c, o)
+         local ipc = require 'libipc'
          while true do
             local nonblocking = false
             local status, item = c:read(nonblocking)
-            if status == ':drained' then
+            if status == ipc.channel.DRAINED then
                break
             elseif item == 'ping?' then
                o:write('pong!')
@@ -267,7 +301,7 @@ test {
       while true do
          local nonblocking = true
          local status, item = output:read(nonblocking)
-         if status == ':drained' then
+         if status == ipc.channel.DRAINED then
             break
          else
             table.insert(outputList, item)
@@ -354,6 +388,7 @@ test {
       for i,stage in ipairs(stages) do
          local worker = ipc.map(1, function(layerSpec, input, output)
             local nn = require 'nn'
+            local ipc = require 'libipc'
             local layer
             if layerSpec.layerType == 'nn.Max' then
                layer = nn.Max(layerSpec.dimension)
@@ -367,7 +402,7 @@ test {
             while true do
                local nonblocking = false
                local status, x = input:read(nonblocking)
-               if status == ':drained' then
+               if status == ipc.channel.DRAINED then
                   output:close()
                   break
                else
@@ -391,7 +426,7 @@ test {
       while true do
          local nonblocking = false
          local status, x = output:read(nonblocking)
-         if status == ':drained' then
+         if status == ipc.channel.DRAINED then
             break
          else
             table.insert(multithreadedResults, x[1])

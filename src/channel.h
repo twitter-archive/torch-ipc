@@ -3,6 +3,10 @@
 
 #include "luaT.h"
 
+#define STATUS_OPEN 0
+#define STATUS_CLOSED 1
+#define STATUS_DRAINED 2
+
 int channel_create(lua_State *L);
 int channel_close(lua_State *L);
 int channel_closed(lua_State *L);
