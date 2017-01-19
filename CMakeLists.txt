@@ -26,6 +26,7 @@ SET(src
    src/mutex.c
    src/sharedtable.c
    src/marshal.c
+   src/channel.c
 )
 SET(luasrc
    lua/Tree.lua
@@ -47,6 +48,7 @@ SET(luasrc
    test/test_mutex.lua
    test/test_sharedtable.lua
    test/test_marshal.lua
+   test/test_channel.lua
 )
 
 ADD_TORCH_PACKAGE(ipc "${src}" "${luasrc}" "A set of primitives for ipc computation in Torch")

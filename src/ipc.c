@@ -15,6 +15,7 @@
 #include "mutex.h"
 #include "sharedtable.h"
 #include "marshal.h"
+#include "channel.h"
 
 int ipc_getpid(lua_State *L) {
    pid_t pid = getpid();
@@ -96,6 +97,7 @@ static const struct luaL_Reg ipc_routines[] = {
    {"sharedtable_size", sharedtable_size},
    {"marshal", marshal_open},
    {"isDevel", ipc_is_devel},
+   {"channel", channel_create},
    {NULL, NULL}
 };
 
@@ -195,6 +197,43 @@ static const struct luaL_Reg marshal_routines[] = {
    {NULL, NULL}
 };
 
+static const struct luaL_Reg channel_routines[] = {
+   {"close", channel_close},
+   {"closed", channel_closed},
+   {"drained", channel_drained},
+   {"read", channel_read},
+   {"write", channel_write},
+   {"num_items", channel_num_items},
+   {"retain", channel_retain},
+   {"metatablename", channel_metatablename},
+   {"__gc", channel_gc},
+   {NULL, NULL}
+};
+
+static void set_channel_table(lua_State *L) {
+   const char* statusNames[] = {
+      "OPEN", "CLOSED", "DRAINED"
+   };
+   const int statusValues[] = {
+      STATUS_OPEN, STATUS_CLOSED, STATUS_DRAINED
+   };
+   lua_createtable(L, 0, 4);
+   for (int i = 0; i < 3; ++i) {
+      lua_pushstring(L, statusNames[i]);
+      lua_pushinteger(L, statusValues[i]);
+      lua_settable(L, -3);
+   }
+   lua_createtable(L, 0, 1);
+   lua_pushstring(L, "__call");
+   lua_pushcfunction(L, channel_create);
+   lua_settable(L, -3);
+   lua_setmetatable(L, -2);
+   lua_pushstring(L, "channel");
+   lua_pushvalue(L, -2);
+   lua_settable(L, -4);
+   lua_pop(L, 1);
+}
+
 DLL_EXPORT int luaopen_libipc(lua_State *L) {
    signal(SIGPIPE, SIG_IGN);  // don't die for SIGPIPE
    luaL_newmetatable(L, "ipc.workqueue");
@@ -202,48 +241,64 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, workqueue_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.server");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, server_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.server.client");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, server_client_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.client");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, client_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.map");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, map_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.spawn");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, spawn_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.flock");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, flock_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.mutex");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, mutex_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.marshal");
    lua_pushstring(L, "__index");
    lua_pushvalue(L, -2);
    lua_settable(L, -3);
    luaT_setfuncs(L, marshal_routines, 0);
+   lua_pop(L, 1);
    luaL_newmetatable(L, "ipc.sharedtable");
    luaT_setfuncs(L, sharedtable_routines, 0);
+   lua_pop(L, 1);
+   luaL_newmetatable(L, "ipc.channel");
+   lua_pushstring(L, "__index");
+   lua_pushvalue(L, -2);
+   lua_settable(L, -3);
+   luaT_setfuncs(L, channel_routines, 0);
+   lua_pop(L, 1);
    Lcliser_CharInit(L);
    Lcliser_ByteInit(L);
    Lcliser_ShortInit(L);
@@ -256,5 +311,6 @@ DLL_EXPORT int luaopen_libipc(lua_State *L) {
 #endif
    lua_newtable(L);
    luaT_setfuncs(L, ipc_routines, 0);
+   set_channel_table(L);
    return 1;
 }

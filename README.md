@@ -114,6 +114,34 @@ print(q:read())
 
 Read more complete documentation on [ipc.workqueue](doc/workqueue.md).
 
+Channels
+--------
+
+Channels are a thread synchronization primitive based on
+message-passing. Threads communicate via channels by writing messages
+onto them and reading messages out of them, in FIFO order. There is no
+restriction on which threads or how many threads can read or write
+from a channel. This allows one to define concurrent workflows easily.
+
+Channels can also be closed, which prevents further writes to it. Once
+all items are read from a closed channel, that channel becomes drained
+and nothing further can be read from it. DAGs of computation made up
+of channels can be shut down via cascading closing/draining of
+channels.
+
+The
+[producer-consumer example](doc/channel.md/#producer-consumer-example)
+shows a group of producer threads and a group of consumer threads
+being set up to communicate via a channel. The main thread tears the
+entire setup down by closing the channel.
+
+The
+[local model parallelism for forward inference example](examples/model-parallelism.lua) shows
+how to set up a `nn.Sequential`-based model so that each of its
+submodules can execute forward inference in parallel.
+
+The full documentation can be found at [ipc.channel](doc/channel.md).
+
 Examples
 --------
 
