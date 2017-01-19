@@ -3,7 +3,7 @@ Channels are a thread synchronization primitive based on
 message-passing. Threads communicate via channels by writing messages
 onto them and reading messages out of them, in FIFO order. There is no
 restriction on which threads or how many threads can read or write
-from a channel.
+from a channel. This allows one to define concurrent workflows easily.
 
 Channels can also be closed, which prevents further writes to it. Once
 all items are read from a closed channel, that channel becomes drained
@@ -49,58 +49,80 @@ blocking reads) or return nil (for non-blocking reads). Reads on a
 drained channel return immediately with the `ipc.channel.DRAINED`
 status.
 
-The following example from
-https://github.com/torch/torch-ipc/blob/channels/test/test_channel.lua#L68
-illustrates using a channel to send values from one thread to another.
+### Producer-consumer example
+The following example illustrates using a channel to send items from
+one group of threads to another. A group of producer threads and a
+group of consumer threads are set up to communicate via a channel. The
+main thread tears the entire setup down by closing the channel.
 
 ``` lua
-      local c = ipc.channel()
-      local items = {true, 10, 'foo'}
-      local producer = ipc.map(1, function(c, items)
-         local test = require 'regress'
-         local ipc = require 'libipc'
-         for _,x in ipairs(items) do
-            local status = c:write(x)
-            test.mustBeTrue(status == ipc.channel.OPEN)
-         end
-      end, c, items)
-      producer:join()
-      test.mustBeTrue(c:num_items() == #items, 'number of items in channel is incorrect')
-      local consumer = ipc.map(1, function(c, items)
-         local test = require 'regress'
-         local ipc = require 'libipc'
-         local nonblocking = false
-         for i=1,#items do
-            local status, item = c:read(nonblocking)
-            test.mustBeTrue(status == ipc.channel.OPEN)
-            test.mustBeTrue(
-               items[i] == item,
-               'item read from channel ('..tostring(item)..') does not match item written to channel ('..tostring(items[i])..')')
-         end
-      end, c, items)
-      consumer:join()
+local ipc = require 'libipc'
+local c = ipc.channel() -- create channel
+
+-- Spawn producer threads that write items to channel and checks the
+-- returned status. If the status is not ipc.channel.OPEN, then the
+-- channel has been closed and the producers should terminate.
+local nproducers = 3
+local producers = ipc.map(nproducers, function(c, tid)
+    local ipc = require 'libipc'
+    local sys = require 'sys'
+    while true do
+        local x = {tid, math.floor(torch.random(10))} -- generate item
+        local status = c:write(x) -- write item onto channel
+        if status ~= ipc.channel.OPEN then
+            break -- channel is no longer open, so terminate
+        end
+        sys.sleep(0.1) -- don't generate too fast
+    end
+end, c)
+
+-- Spawn consumer threads that read items from the channel and checks
+-- the returned status. If the status is ipc.channel.DRAINED, then
+-- there will not be any more items to read and the consumers should
+-- terminate.
+local consumers = ipc.map(1, function(c)
+    local ipc = require 'libipc'
+    local nonblocking = false
+    while true do
+        local status, item = c:read(nonblocking) -- read item from channel
+        if status == ipc.channel.DRAINED then
+            break -- channel has been drained, so terminate
+        else
+            print('tid: '..item[1]..' r: '..item[2]) -- do the thing
+        end
+    end
+end, c)
+
+-- It is possible to write to the channel from any thread, including
+-- this one.
+c:write({0, 'from main thread'})
+
+sys.sleep(5) -- wait 5 secs so producers and consumers can run
+
+-- Close the channel so producers and consumers will terminate.
+c:close()
+producers:join()
+consumers:join()
+assert(c:num_items() == 0)
 ```
 
-__:write()__ can accept multiple arguments. Each of these arguments is
-written to the channel.
-
-The following example from
-https://github.com/torch/torch-ipc/blob/channels/test/test_channel.lua#L51
-shows how to write multiple values into a channel with a single
-__:write()__ call.
+### Multi-write example
+The following example shows how to write multiple values into a
+channel with a single __:write()__ call. __:write()__ can accept
+multiple arguments. Each of these arguments is written to the channel.
 
 ``` lua
       local c = ipc.channel()
       local data = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,}
       local unpack = unpack or table.unpack
       local status = c:write(unpack(data))
-      test.mustBeTrue(status == ipc.channel.OPEN)
-      test.mustBeTrue(c:num_items() == 12, 'number of items in channel is incorrect')
+      assert(status == ipc.channel.OPEN)
+      assert(c:num_items() == 12, 'number of items in channel is incorrect')
       local nonblocking = false
       for i=1,#data do
          local status, readData = c:read(nonblocking)
-         test.mustBeTrue(status == ipc.channel.OPEN)
-         test.mustBeTrue(readData == i)
+         assert(status == ipc.channel.OPEN)
+         assert(readData == i)
       end
 ```
 
@@ -121,11 +143,11 @@ threads that there will no longer be anything to read on the
 channel. These threads might close the channels that they are writing
 to, resulting in a cascading teardown of channels further downstream.
 
-See the workqueue-with-channels unit test
-https://github.com/torch/torch-ipc/blob/channels/test/test_channel.lua#L188
-for an example of channels being closed so that downstream workers
-drain the now-closed channels and terminate when they receive the
-`ipc.channel.DRAINED` status.
+See the [Producer-consumer example](### Producer-consumer example) to
+see an example of threads checking statuses of __:read()__ and
+__:write()__ calls to determine whether they should terminate and the
+main thread closing a channel to teardown a collection of threads
+operating on a channel.
 
 ## Behaviors not yet implemented
 1. It is not possible to specify the max number of items that can be
@@ -139,17 +161,17 @@ drain the now-closed channels and terminate when they receive the
    not reading an item at all.
 
 ## Examples
-The unit tests contained in
-https://github.com/torch/torch-ipc/blob/channels/test/test_channel.lua
-provide a rich set of examples. Two examples are described in more
-detail here.
+The
+[ipc.channel unit tests](../test/test_channel.lua)
+provide a rich set of examples, in addition to the
+[local model parallelism for forward inference example](../examples/model-parallelism.lua).
+
+Two examples are described in detail here.
 
 ### Building workqueues with channels
-The unit test located at
-https://github.com/torch/torch-ipc/blob/channels/test/test_channel.lua#L188
-shows how to build a workqueue as described
-in [ipc.workqueue](workqueue.md) using channels, while allowing for
-more than one owner thread.
+The `channelsAsWorkQueue` unit test shows how to build a workqueue as
+described in [ipc.workqueue](workqueue.md) using channels, while
+allowing for more than one owner thread.
 
 Multiple threads can write onto the channel that is used to send work
 items to the workers. They can write onto this channel until it is
@@ -160,8 +182,8 @@ as it sees that either the work item channel has been drained or the
 results channel has been closed.
 
 ### Local model parallelism for forward inference
-The unit test located at
-https://github.com/torch/torch-ipc/blob/channels/test/test_channel.lua#L316
+The
+[local model parallelism example](../examples/model-parallelism.lua)
 shows how to set up a `nn.Sequential`-based model so that each of its
 submodules can execute forward inference in parallel.
 
