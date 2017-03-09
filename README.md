@@ -25,6 +25,24 @@ end)
 
 See the [AllReduce example](examples/allreduce.lua) to try it out.
 
+SlurmTree
+---------
+
+An implementation of Tree that integrates with the [Slurm cluster manager](https://slurm.schedmd.com/).
+It builds the communication tree by reading in the slurm variables which are
+specified via [SBATCH directives](https://slurm.schedmd.com/sbatch.html)
+(i.e. --nodes, --tasks-per-node, etc...) and minimizing the inter node
+communication (when there are more than one tasks per node)
+
+SlurmTree takes two optional arguments:
+1. File path - For the file that coordinates the initial connection
+of processes. The file location has to be shared across nodes.
+(By default '~/.torch')
+2. Tasks per gpu - Used to calculate the gpu id property (By default 1)
+
+See the [slurm script](examples/allreduce.slurm) for an example of how to
+start the processes.
+
 Client-Server
 -------------
 

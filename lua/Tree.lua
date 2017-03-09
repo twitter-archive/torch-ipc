@@ -1,27 +1,28 @@
 local ipc = require 'libipc'
 local walkTable = require 'ipc.utils'.walkTable
 
-local function rcsvAllPairs(b, n, i, d, f)
-   local function ff(a, b, d)
-      if a <= n and b <= n then
-         f(a, b, d)
+local function rcsvAllPairs(base, numNodes, index, depth, linkFunc)
+   local function link(a, b, d)
+      if a <= numNodes and b <= numNodes then
+         linkFunc(a, b, d)
       end
    end
-   if d == 0 then
-      local skip = math.pow(b, d + 1)
-      for j = i+2,i+skip do
-         ff(i + 1, j, d)
+   if depth == 0 then
+      local skip = math.pow(base, depth + 1)
+      for j = index + 2, index + skip do
+         link(index + 1, j, depth)
       end
    else
-      local skip = math.pow(b, d)
-      ff(i + 1, i + skip + 1, d)
-      for c = 0,b-1 do
-         rcsvAllPairs(b, n, i + (c * skip), d - 1, f)
+      local skip = math.pow(base, depth)
+      link(index + 1, index + skip + 1, depth)
+      for c = 0, base - 1 do
+         rcsvAllPairs(base, numNodes, index + (c * skip), depth - 1, linkFunc)
       end
    end
 end
 
-local function Tree(nodeIndex, numNodes, base, server, client, host, port)
+local function Tree(nodeIndex, numNodes, base, server, client, host, port, buildTree)
+   buildTree = buildTree or rcsvAllPairs
 
    local maxDepth = math.ceil(math.log(numNodes) / math.log(base))
 
@@ -37,15 +38,20 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
          client:send({ q = "address?" })
          local msg = client:recv()
          assert(msg.q == "address")
-         addresses[msg.nodeIndex] = {
-            nodeIndex = msg.nodeIndex,
+         local clientNodeIndex = msg.nodeIndex or #addresses + 1
+         addresses[clientNodeIndex] = {
+            nodeIndex = clientNodeIndex,
             host = msg.host,
             port = msg.port
          }
+         client:send({ 
+            q = "clientIndex",
+            clientIndex = clientNodeIndex 
+         })
       end)
       -- Build a tree of connections to establish
       local tree = { }
-      rcsvAllPairs(base, numNodes, 0, maxDepth - 1, function(to, from, depth)
+      buildTree(base, numNodes, 0, maxDepth - 1, function(to, from, depth)
          tree[from] = tree[from] or { }
          tree[from].connect = addresses[to]
          tree[to] = tree[to] or { }
@@ -86,6 +92,9 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
          host = host,
          port = port
       })
+      msg = client:recv()
+      assert(msg.q == "clientIndex")
+      nodeIndex = msg.clientIndex
       -- Get the tree of connections
       local tree = client:recv()
       local node = tree[nodeIndex]
