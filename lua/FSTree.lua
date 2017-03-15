@@ -1,14 +1,9 @@
 local DiscoveredTree = require 'ipc.DiscoveredTree'
 local ipc = require 'libipc'
 local sys = require 'sys'
-local paths = require 'paths'
 
-local function FSTree(numNodes, fn)
-   local nodeIndex = nil
-   sys.sleep(torch.uniform() * 3)
-   if not paths.filep(fn) then
-      nodeIndex = 1
-   end
+local function FSTree(numNodes, nodeIndex, fn)
+   fn = fn or '/tmp/torch.'..ipc.getppid()..'.server'
    local function publish(host, port)
       local f = io.open(fn, 'w')
       f:write(host..':'..port)
@@ -29,7 +24,7 @@ local function FSTree(numNodes, fn)
          end
       end
    end
-   return DiscoveredTree(nodeIndex, numNodes, sys.execute('/bin/hostname -i'), nil, publish, query)
+   return DiscoveredTree(nodeIndex, numNodes, sys.execute('/bin/hostname'), nil, publish, query)
 end
 
 return FSTree
