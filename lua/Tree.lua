@@ -37,11 +37,16 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
          client:send({ q = "address?" })
          local msg = client:recv()
          assert(msg.q == "address")
-         addresses[msg.nodeIndex] = {
-            nodeIndex = msg.nodeIndex,
+         local clientNodeIndex = msg.nodeIndex or #addresses + 1
+         addresses[clientNodeIndex] = {
+            nodeIndex = clientNodeIndex,
             host = msg.host,
             port = msg.port
          }
+         client:send({ 
+            q = "clientIndex",
+            clientIndex = clientNodeIndex 
+         })
       end)
       -- Build a tree of connections to establish
       local tree = { }
@@ -86,6 +91,9 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
          host = host,
          port = port
       })
+      msg = client:recv()
+      assert(msg.q == "clientIndex")
+      nodeIndex = msg.clientIndex
       -- Get the tree of connections
       local tree = client:recv()
       local node = tree[nodeIndex]

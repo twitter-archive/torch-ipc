@@ -33,6 +33,8 @@ SET(luasrc
    lua/StaticTree.lua
    lua/DiscoveredTree.lua
    lua/LocalhostTree.lua
+   lua/FSTree.lua
+   lua/SlurmTree.lua
    lua/NullTree.lua
    lua/utils.lua
    lua/BackgroundTask.lua

@@ -14,6 +14,7 @@ description = {
 dependencies = {
    "torch >= 7.0",
    "regress",
+   "paths"
 }
 
 build = {
