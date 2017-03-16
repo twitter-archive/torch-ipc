@@ -27,7 +27,6 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
 
    local function initialServer()
       -- Get every node's address and nodeIndex
-      print('Server Ready ('..nodeIndex..') '..host..':'..port)
       local addresses = { }
       addresses[nodeIndex] = {
          nodeIndex = nodeIndex,
@@ -38,7 +37,7 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
          client:send({ q = "address?" })
          local msg = client:recv()
          assert(msg.q == "address")
-         local clientNodeIndex = #addresses + 1
+         local clientNodeIndex = msg.nodeIndex or #addresses + 1
          addresses[clientNodeIndex] = {
             nodeIndex = clientNodeIndex,
             host = msg.host,
@@ -88,15 +87,13 @@ local function Tree(nodeIndex, numNodes, base, server, client, host, port)
       assert(msg.q == "address?")
       client:send({
          q = "address",
+         nodeIndex = nodeIndex,
          host = host,
          port = port
       })
       msg = client:recv()
       assert(msg.q == "clientIndex")
-      if nodeIndex == nil then
-         nodeIndex = msg.clientIndex
-      end
-      print('Client Ready ('..nodeIndex..') '..host)
+      nodeIndex = msg.clientIndex
       -- Get the tree of connections
       local tree = client:recv()
       local node = tree[nodeIndex]
