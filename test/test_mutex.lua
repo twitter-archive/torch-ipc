@@ -3,25 +3,38 @@ local ipc = require 'libipc'
 
 test {
    testLockingAndBarrier = function()
-      local mutex = ipc.mutex()
+      local beforeWriteMutex = ipc.mutex()
+      local afterWriteMutex = ipc.mutex()
       local shared = torch.FloatTensor(10000)
       shared:fill(0)
-      local m = ipc.map(3, function(mutex, shared, mapid)
+
+      local m = ipc.map(3, function(beforeWriteMutex, afterWriteMutex, shared, mapid)
          local ipc = require 'libipc'
          local sys = require 'sys'
+
          assert(shared[1] == 0)
-         mutex:barrier(4)
+         beforeWriteMutex:barrier(4)
+
+         afterWriteMutex:barrier(4)
          assert(shared[1] ~= 0)
-         mutex:lock()
+
+         afterWriteMutex:lock()
          for i = 1,shared:size(1) do
             shared[i] = mapid
-            sys.sleep(math.random(1000)/1e8)
          end
-         mutex:unlock()
-      end, mutex, shared)
-      sys.sleep(1)
+         afterWriteMutex:unlock()
+      end, beforeWriteMutex, afterWriteMutex, shared)
+
+      -- `beforeWriteMutex:barrier(4)` guarantees `assert(shared[1] == 0)` to succeed:
+      -- the assignment `shard[1] = 1000` won't happen until all 3 threads finish the above assert.
+      beforeWriteMutex:barrier(4)
+
       shared[1] = 1000
-      mutex:barrier(4)
+
+      -- afterWriteMutex:barrier(4) guarantees `assert(shared[1] ~= 0)` to succeed:
+      -- the assignment `shard[1] = 1000` is guaranteed to happen before the above asserts.
+      afterWriteMutex:barrier(4)
+
       m:join()
       local first = shared[1]
       for i = 2,shared:size(1) do
